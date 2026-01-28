@@ -482,9 +482,9 @@ Text: "${itemAiText}"`,
       addressNotes: formData.address || ''
     };
 
-    // Zakódujeme pomocí encodeURIComponent (jednodušší a spolehlivější)
+    // Zakódujeme pomocí Base64 pro maximální spolehlivost při přenosu v URL
     const jsonStr = JSON.stringify(pytlikData);
-    const encodedData = encodeURIComponent(jsonStr);
+    const encodedData = btoa(unescape(encodeURIComponent(jsonStr)));
 
     const pytlikUrl = `https://el-pytlik.vercel.app/?jobData=${encodedData}`;
 
