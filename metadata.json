@@ -1,0 +1,7 @@
+{
+  "name": "CML",
+  "description": "A sophisticated Kanban-style board for printing jobs with integrated digital order forms and AI analysis.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
