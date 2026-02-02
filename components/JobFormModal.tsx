@@ -297,7 +297,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     };
 
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || process.env.API_KEY;
+      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
         alert("Není nastaven API klíč. Prosím nastavte ho v hlavním nastavení Tabule (ikona ozubeného kolečko v záhlaví).");
         setIsAiFilling(false);
@@ -386,7 +386,7 @@ Text: "${aiInput}"`,
     };
 
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || process.env.API_KEY;
+      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
         alert("Není nastaven API klíč. Prosím nastavte ho v hlavním nastavení Tabule.");
         setIsAiFilling(false);

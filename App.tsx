@@ -178,7 +178,7 @@ const App: React.FC = () => {
     };
 
     try {
-      const apiKey = manualApiKey || process.env.API_KEY;
+      const apiKey = manualApiKey || import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
         alert("Není nastaven API klíč. Prosím nastavte ho v nastavení (ozubené kolečko).");
         setIsSettingsOpen(true);
