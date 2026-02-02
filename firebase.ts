@@ -1,5 +1,6 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 const firebaseConfig = {
     apiKey: "AIzaSyAeGu3urs7UX39j1u0XW0xfuznE2wrw81E",
@@ -11,7 +12,9 @@ const firebaseConfig = {
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+const auth = getAuth(app);
 const db = getFirestore(app);
 const PUBLIC_ORDERS_COLLECTION = 'orders';
+const INVITES_COLLECTION = 'invites';
 
-export { db, PUBLIC_ORDERS_COLLECTION };
+export { auth, db, PUBLIC_ORDERS_COLLECTION, INVITES_COLLECTION };

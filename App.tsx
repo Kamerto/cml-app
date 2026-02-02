@@ -4,7 +4,7 @@ import {
   Plus, Search, Sparkles,
   Settings, Bot, X, Printer,
   Loader2, MapPin, Zap, Navigation,
-  Layers, Maximize, Minimize, FolderSync
+  Layers, Maximize, Minimize, FolderSync, LogOut
 } from 'lucide-react';
 import { JobData, JobStatus, PrintItem } from './types';
 import { INITIAL_JOBS } from './constants';
@@ -12,7 +12,9 @@ import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
 import { GoogleGenAI, Type } from '@google/genai';
 import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc } from 'firebase/firestore';
-import { db, PUBLIC_ORDERS_COLLECTION } from './firebase';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { auth, db, PUBLIC_ORDERS_COLLECTION } from './firebase';
+import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
   const [jobs, setJobs] = useState<JobData[]>(() => {
@@ -28,12 +30,30 @@ const App: React.FC = () => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     localStorage.setItem('cml_jobs_v3', JSON.stringify(jobs));
   }, [jobs]);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
+      setIsAuthLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Chyba při odhlašování:', error);
+    }
+  };
 
   // --- FIREBASE HELPER FUNKCE --- 
 
@@ -564,6 +584,18 @@ Text poptávky: "${aiText}"`,
     j.jobName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  if (isAuthLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <Loader2 className="w-12 h-12 text-purple-600 animate-spin" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <LoginPage />;
+  }
+
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-slate-950 font-sans">
       <header className="bg-slate-900 border-b border-slate-800 px-6 py-3 flex items-center justify-between z-50 shadow-2xl">
@@ -593,6 +625,15 @@ Text poptávky: "${aiText}"`,
           <button onClick={handleAutoArrange} title="Seskupí zakázky ve stejných rajónech jako jsou ty expresní" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all"><MapPin className="w-4 h-4 text-emerald-400" /> <span className="hidden lg:inline">Rajóny Expresu</span></button>
           <button onClick={() => setIsAiPanelOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700"><Bot className="w-4 h-4 text-purple-400" /> <span className="hidden lg:inline">AI Import</span></button>
           <button onClick={handleCreateJob} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black shadow-lg shadow-purple-900/40 active:scale-95 transition-all"><Plus className="w-4 h-4" /> NOVÁ ZAKÁZKA</button>
+          <div className="w-px h-8 bg-slate-800 mx-1 hidden md:block"></div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-red-500/10 hover:bg-red-500 text-red-500 hover:text-white text-xs font-bold border border-red-500/20 transition-all"
+            title={`Odhlásit uživatele ${user?.email}`}
+          >
+            <LogOut className="w-4 h-4" />
+            <span className="hidden xl:inline">Odhlásit</span>
+          </button>
         </div>
       </header>
 
