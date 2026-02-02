@@ -274,6 +274,11 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
 
   const handleStatusChange = (status: JobStatus) => {
     setFormData(prev => ({ ...prev, status }));
+    if (status === JobStatus.INQUIRY) {
+      setActiveTab('details');
+    } else {
+      setActiveTab('production');
+    }
   };
 
   const handleOpenMaps = () => {
@@ -564,10 +569,10 @@ Text: "${itemAiText}"`,
                 {formData.status === col.id ? <CheckCircle2 className="w-4.5 h-4.5" /> : <FileText className="w-4.5 h-4.5 opacity-40" />}{col.title}
               </button>
             ))}
-            <div className="pt-8 mt-8 border-t border-slate-800/50 space-y-2.5">
+            {/* <div className="pt-8 mt-8 border-t border-slate-800/50 space-y-2.5">
               <button onClick={() => setActiveTab('details')} className={`w-full flex items-center gap-3.5 px-5 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'details' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}><FileText className="w-4 h-4" /> Základní údaje</button>
               <button onClick={() => setActiveTab('production')} className={`w-full flex items-center gap-3.5 px-5 py-3 rounded-xl text-xs font-bold transition-all ${activeTab === 'production' ? 'bg-slate-800 text-white' : 'text-slate-500 hover:text-slate-300'}`}><Cpu className="w-4 h-4" /> Výroba & Tech</button>
-            </div>
+            </div> */}
           </aside>
 
           <div className="flex-1 overflow-y-auto p-10 bg-slate-900/30 custom-scrollbar">
