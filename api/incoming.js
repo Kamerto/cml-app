@@ -1,5 +1,7 @@
+const admin = require('firebase-admin');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
-const { getFirestore, FieldValue } = require('firebase-admin/firestore');
+const { getFirestore } = require('firebase-admin/firestore');
+const FieldValue = admin.firestore.FieldValue;
 const { GoogleGenAI } = require('@google/genai');
 
 // Initialize Firebase Admin
@@ -117,13 +119,17 @@ module.exports = async function handler(req, res) {
         const emailRef = await db.collection('zakazka_emails').add(emailData);
 
         // Aktualizace zakázky o ID posledního e-mailu pro rychlý přístup z karty
-        const ordersRef = db.collection('orders');
-        const orderQuery = await ordersRef.where('jobId', '==', targetJobId).limit(1).get();
-        if (!orderQuery.empty) {
-            await orderQuery.docs[0].ref.update({
-                lastEmailEntryId: entry_id,
-                lastUpdated: FieldValue.serverTimestamp()
-            });
+        try {
+            const ordersRef = db.collection('orders');
+            const orderSnap = await ordersRef.where('jobId', '==', targetJobId).limit(1).get();
+            if (!orderSnap.empty) {
+                await orderSnap.docs[0].ref.update({
+                    lastEmailEntryId: entry_id,
+                    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+                });
+            }
+        } catch (uErr) {
+            console.error('Nepovinná aktualizace zakázky selhala:', uErr.message);
         }
 
         return res.status(200).json({
