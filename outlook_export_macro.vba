@@ -1,4 +1,5 @@
 Sub PoslatDoAplikace()
+    ' VERZE: cml-app-final (CLI Deploy)
     Dim objMail As Outlook.MailItem
     Dim strID As String
     Dim strSubject As String
@@ -8,7 +9,7 @@ Sub PoslatDoAplikace()
     Dim payload As String
     Dim zakazkaID As String
 
-    ' 1. Získání aktuálního mailu
+    ' 1. Získání mailu
     On Error Resume Next
     Set objMail = Application.ActiveExplorer.Selection.Item(1)
     On Error GoTo 0
@@ -18,24 +19,18 @@ Sub PoslatDoAplikace()
         Exit Sub
     End If
 
-    ' 2. Okno pro ruční zadání ID (vždy prázdné)
-    ' Pokud ponecháš prázdné, aplikace ví, že má vytvořit novou kartu
-    zakazkaID = InputBox("Zadejte ID zakázky pro přiřazení (ponechte prázdné pro NOVOU zakázku):", "Odeslání do systému")
+    ' 2. ID zakázky
+    zakazkaID = InputBox("Zadejte ID zakázky (nebo nechte prázdné pro NOVOU):", "Odeslání do cml-app-final")
     
-    ' Poznámka: Pokud uživatel stornuje okno (Cancel), zakazkaID bude prázdné,
-    ' ale my chceme rozlišit prázdné (nová) a storno.
-    ' Pro zjednodušení: pokud dáš Cancel, prostě se nic nepošle.
-
     ' 3. Příprava dat
     strID = objMail.EntryID
     strSubject = objMail.Subject
-    strBody = Left(objMail.Body, 2000) ' Posíláme delší náhled pro AI analýzu
+    strBody = Left(objMail.Body, 2000)
     
-    ' PRODUKČNÍ URL - CML App na Vercel
-    url = "https://cml-app-ten.vercel.app/api/webhooks/incoming"
+    ' ✅ FINÁLNÍ URL (CLI DEPLOY - v2)
+    url = "https://cml-app-v2-nine.vercel.app/api/incoming"
 
-    ' 4. Vytvoření JSONu
-    ' JSON obsahuje buď ID zakázky, nebo prázdný řetězec
+    ' 4. JSON
     payload = "{" & _
                 """zakazka_id"": """ & zakazkaID & """, " & _
                 """subject"": """ & CleanJSON(strSubject) & """, " & _
@@ -52,18 +47,26 @@ Sub PoslatDoAplikace()
     http.Send payload
     
     If Err.Number = 0 Then
-        If zakazkaID = "" Then
-            MsgBox "Odesláno jako NOVÁ zakázka.", vbInformation
+        ' Odstranění případného BOM nebo paznaků na začátku
+        Dim cleanResp As String
+        cleanResp = http.responseText
+        If Left(cleanResp, 1) = "?" Then cleanResp = Mid(cleanResp, 2)
+        
+        If http.Status = 200 Then
+            If zakazkaID = "" Then
+                MsgBox "✅ Odesláno do: " & url & vbCrLf & "Jako NOVÁ zakázka." & vbCrLf & "Odpověď: " & cleanResp, vbInformation
+            Else
+                MsgBox "✅ Odesláno do: " & url & vbCrLf & "Připojeno k zakázce " & zakazkaID & vbCrLf & "Odpověď: " & cleanResp, vbInformation
+            End If
         Else
-            MsgBox "Připojeno k zakázce ID: " & zakazkaID, vbInformation
+            MsgBox "❌ Chyba serveru (" & http.Status & "): " & cleanResp, vbCritical
         End If
     Else
-        MsgBox "Chyba při odesílání: " & Err.Description & vbCrLf & "Zkontrolujte připojení k internetu.", vbCritical
+        MsgBox "❌ Chyba komunikace s " & url & ": " & Err.Description, vbCritical
     End If
     On Error GoTo 0
 End Sub
 
-' Pomocná funkce pro vyčištění textu pro JSON (uvozovky, nové řádky)
 Function CleanJSON(txt As String) As String
     Dim out As String
     out = Replace(txt, "\", "\\")

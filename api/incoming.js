@@ -82,7 +82,10 @@ module.exports = async function handler(req, res) {
                     quantity: it.quantity || 1,
                     size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0
                 })),
-                position: { x: 100, y: 100 },
+                position: {
+                    x: 100 + Math.floor(Math.random() * 400),
+                    y: 100 + Math.floor(Math.random() * 400)
+                },
                 isTracked: true,
                 created_at: FieldValue.serverTimestamp()
             };
