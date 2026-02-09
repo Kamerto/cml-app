@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
             const aiData = await parseEmailWithAI(preview || '', subject);
 
             const newJob = {
-                jobId: `OUT-${Math.floor(Date.now() / 100000)}`,
+                jobId: `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
                 customer: aiData.customer,
                 jobName: aiData.jobName,
                 status: 'Poptávka',
