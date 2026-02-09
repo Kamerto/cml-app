@@ -59,10 +59,10 @@ async function parseEmailWithAI(preview, subject) {
     }
 
     try {
-        const genAI = new GoogleGenAI(apiKey);
-        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
-        const prompt = `Analyzuj tento e-mail a vrať stručný JSON pro tiskovou zakázku.
+        const genAI = new GoogleGenAI({ apiKey });
+        const result = await genAI.models.generateContent({
+            model: "gemini-1.5-flash",
+            contents: `Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
 Subject: ${subject}
 Text: ${preview}
 
@@ -71,12 +71,13 @@ JSON formát:
   "customer": "jméno zákazníka",
   "jobName": "stručný název zakázky",
   "items": [{"description": "popis", "quantity": 100}]
-}`;
+}`,
+        });
 
-        const result = await model.generateContent(prompt);
-        const response = await result.response;
-        const text = response.text().replace(/```json|```/g, '').trim();
-        return JSON.parse(text);
+        // Bezpečné vytažení textu z Gemini 2.0 SDK
+        const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const cleanJson = generatedText.replace(/```json|```/g, '').trim();
+        return JSON.parse(cleanJson);
     } catch (e) {
         console.error('AI selhalo:', e.message);
         return { customer: 'Neznámý (Outlook)', jobName: subject, items: [] };
