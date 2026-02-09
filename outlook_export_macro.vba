@@ -40,7 +40,8 @@ Sub PoslatDoAplikace()
 
     ' 5. Odeslání
     On Error Resume Next
-    Set http = CreateObject("MSXML2.XMLHTTP")
+    Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
+    If http Is Nothing Then Set http = CreateObject("MSXML2.XMLHTTP")
     If http Is Nothing Then Set http = CreateObject("Microsoft.XMLHTTP")
     
     If http Is Nothing Then
@@ -51,13 +52,21 @@ Sub PoslatDoAplikace()
     http.Open "POST", url, False
     http.setRequestHeader "Content-Type", "application/json"
     
-    ' Pokus o timeout (jen pro ServerXMLHTTP, u XMLHTTP se ignoruje)
+    ' Nastavení timeoutů (v milisekundách): resolve, connect, send, receive
+    ' U ServerXMLHTTP je toto funkční a zabrání záseku Outlooku.
     On Error Resume Next
     http.setTimeouts 5000, 5000, 10000, 10000
     On Error GoTo 0
     
     On Error Resume Next
     http.Send payload
+    
+    If Err.Number <> 0 Then
+        MsgBox "❌ Chyba při odesílání: " & Err.Description & vbCrLf & "Pravděpodobně vypršel časový limit (Timeout) nebo server neodpovídá.", vbCritical
+        On Error GoTo 0
+        Exit Sub
+    End If
+    On Error GoTo 0
     
     If Err.Number = 0 Then
         ' Odstranění případného BOM nebo paznaků na začátku
