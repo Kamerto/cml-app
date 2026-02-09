@@ -116,6 +116,16 @@ module.exports = async function handler(req, res) {
 
         const emailRef = await db.collection('zakazka_emails').add(emailData);
 
+        // Aktualizace zakázky o ID posledního e-mailu pro rychlý přístup z karty
+        const ordersRef = db.collection('orders');
+        const orderQuery = await ordersRef.where('jobId', '==', targetJobId).limit(1).get();
+        if (!orderQuery.empty) {
+            await orderQuery.docs[0].ref.update({
+                lastEmailEntryId: entry_id,
+                lastUpdated: FieldValue.serverTimestamp()
+            });
+        }
+
         return res.status(200).json({
             success: true,
             jobId: targetJobId,

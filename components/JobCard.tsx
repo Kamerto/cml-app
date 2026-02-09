@@ -1,6 +1,6 @@
 import React from 'react';
 import { JobData, JobStatus } from '../types';
-import { Trash2, MapPin, FileText, Cpu, Zap, Folder } from 'lucide-react';
+import { Trash2, MapPin, FileText, Cpu, Zap, Folder, Mail } from 'lucide-react';
 import { COLUMNS } from '../constants';
 
 interface JobCardProps {
@@ -125,7 +125,17 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
           </div>
         </div>
 
-        <div className={`text-[13px] font-black ${textColorClass} drop-shadow-sm whitespace-nowrap ml-1`}>
+        <div className={`text-[13px] font-black ${textColorClass} drop-shadow-sm whitespace-nowrap ml-1 flex items-center gap-2`}>
+          {job.lastEmailEntryId && (
+            <a
+              href={`outlook:${job.lastEmailEntryId}`}
+              onClick={(e) => e.stopPropagation()}
+              className="p-1 bg-white/20 hover:bg-white/40 rounded transition-colors"
+              title="Otevřít poslední email v Outlooku"
+            >
+              <Mail className="w-3.5 h-3.5 text-white" />
+            </a>
+          )}
           <span className={!dateToDisplay ? 'bg-amber-500/30 px-1 rounded ring-1 ring-amber-400/40' : ''}>
             {dateToDisplay || '--.--'}
           </span>
