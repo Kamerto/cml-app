@@ -573,9 +573,24 @@ Text: "${itemAiText}"`,
               <h2 className={`font-black text-xl truncate max-w-[180px] md:max-w-md leading-none tracking-tight ${!formData.customer ? 'text-amber-500 italic' : 'text-slate-100'}`}>
                 {formData.customer || 'Klient není zadán!'}
               </h2>
-              <span className={`text-xs font-bold mt-1.5 ${!formData.jobName ? 'text-amber-600/70' : 'text-slate-500'}`}>
-                {formData.jobName || 'Název zakázky chybí...'}
-              </span>
+              <div className="flex items-center gap-2 mt-1.5">
+                <span className={`text-xs font-bold ${!formData.jobName ? 'text-amber-600/70' : 'text-slate-500'}`}>
+                  {formData.jobName || 'Název zakázky chybí...'}
+                </span>
+                {formData.jobId && (
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(formData.jobId);
+                      alert('ID zkopírováno: ' + formData.jobId);
+                    }}
+                    className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-700/50 hover:bg-purple-500/20 text-slate-400 hover:text-purple-300 rounded text-[10px] font-mono transition-colors border border-slate-700 hover:border-purple-500/30"
+                    title="Kliknutím zkopírujete ID pro Outlook"
+                  >
+                    <Hash className="w-3 h-3" />
+                    {formData.jobId}
+                  </button>
+                )}
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-4">
@@ -633,6 +648,45 @@ Text: "${itemAiText}"`,
           <div className="flex-1 overflow-y-auto p-10 bg-slate-900/30 custom-scrollbar">
             {activeTab === 'details' ? (
               <div className="max-w-3xl space-y-8 animate-in fade-in slide-in-from-left-4">
+
+                {/* ID ZAKÁZKY - PŘESUNUTO SEM PRO VIDITELNOST */}
+                <div className="p-5 bg-slate-800/50 border border-slate-700/50 rounded-2xl flex items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5 flex items-center gap-2 tracking-widest">
+                      <Hash className={`w-3.5 h-3.5 text-purple-400`} /> Číslo zakázky (ID) - pro Outlook
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        readOnly
+                        className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2 text-sm font-mono font-bold text-slate-300 focus:ring-0 cursor-copy"
+                        value={formData.jobId || 'Bude vygenerováno po uložení...'}
+                        onClick={(e) => {
+                          if (formData.jobId) {
+                            navigator.clipboard.writeText(formData.jobId);
+                            (e.target as HTMLInputElement).select();
+                          }
+                        }}
+                        placeholder="OUT-XXXX..."
+                      />
+                      {formData.jobId && (
+                        <button
+                          onClick={() => {
+                            navigator.clipboard.writeText(formData.jobId);
+                            alert('Zkopírováno!');
+                          }}
+                          className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white rounded-xl text-xs font-black transition-all border border-purple-500/30"
+                        >
+                          KOPIROVAT
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1.5 ml-1">
+                      Toto ID zadejte do Outlook makra pro přiřazení e-mailu.
+                    </p>
+                  </div>
+                </div>
+
                 <div>
                   <label className="block text-xs font-black text-slate-600 uppercase mb-3 flex items-center gap-2 tracking-widest">
                     <Building className={`w-4 h-4 transition-all duration-300 ${getIconStyle(formData.customer)}`} /> Zákazník / Firma
@@ -707,7 +761,11 @@ Text: "${itemAiText}"`,
                             <a
                               href={`outlook:${email.entry_id}`}
                               className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded-xl text-xs font-black transition-all shrink-0 border border-blue-500/20 active:scale-95 shadow-lg shadow-blue-900/10"
-                              title="Otevřít v Outlooku"
+                              title="Otevřít v Outlooku (Desktop)"
+                              onClick={(e) => {
+                                // Prevent default handling if needed, or add logic
+                                // Pro web to nefunguje, ale pro desktop ano.
+                              }}
                             >
                               <Mail className="w-3.5 h-3.5" />
                               OTEVŘÍT

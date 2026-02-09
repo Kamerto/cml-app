@@ -620,7 +620,7 @@ Text poptávky: "${aiText}"`,
         <div className="flex items-center gap-6">
           <div className="flex items-center gap-3">
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
-            <h1 className="text-xl font-black text-white tracking-tighter uppercase">CML BOARD <span className="text-purple-400 text-xs ml-1">v2.3</span></h1>
+            <h1 className="text-xl font-black text-white tracking-tighter uppercase">CML BOARD <span className="text-purple-400 text-xs ml-1">v2.4</span></h1>
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
