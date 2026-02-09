@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
+import { GoogleGenAI } from '@google/genai';
 
 // Initialize Firebase Admin
 if (!getApps().length) {
@@ -15,8 +16,43 @@ if (!getApps().length) {
 
 const db = getFirestore();
 
+// AI Funkce pro parsování e-mailu
+async function parseEmailWithAI(preview: string, subject: string) {
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
+        return { customer: 'Neznámý (Outlook)', jobName: subject, items: [] };
+    }
+
+    try {
+        const prompt = `Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+Subject: ${subject}
+Text: ${preview}
+
+JSON formát:
+{
+  "customer": "jméno zákazníka",
+  "jobName": "stručný název zakázky",
+  "items": [{"description": "popis", "quantity": 100}]
+}`;
+
+        const genAI = new GoogleGenAI({ apiKey });
+        const result = await genAI.models.generateContent({
+            model: "gemini-1.5-flash",
+            contents: prompt,
+        });
+
+        // Safe extraction of text from Gemini 2.0 SDK response
+        const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        const cleanJson = generatedText.replace(/```json|```/g, '').trim();
+
+        return JSON.parse(cleanJson);
+    } catch (e: any) {
+        console.error('AI selhalo:', e.message);
+        return { customer: 'Neznámý (Outlook)', jobName: subject, items: [] };
+    }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-    // Only allow POST requests
     if (req.method !== 'POST') {
         return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -24,24 +60,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
         const { zakazka_id, subject, entry_id, preview } = req.body;
 
-        // Validate required fields
-        if (!zakazka_id || !subject || !entry_id) {
-            return res.status(400).json({ error: 'Missing required fields: zakazka_id, subject, entry_id' });
+        if (!subject || !entry_id) {
+            return res.status(400).json({ error: 'Missing required fields: subject, entry_id' });
         }
 
-        // Check if job exists
-        const ordersSnapshot = await db.collection('orders')
-            .where('jobId', '==', zakazka_id)
-            .limit(1)
-            .get();
+        let targetJobId = zakazka_id;
 
-        if (ordersSnapshot.empty) {
-            return res.status(404).json({ error: `Job with ID ${zakazka_id} not found` });
+        // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
+        if (!targetJobId) {
+            console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
+            const aiData = await parseEmailWithAI(preview || '', subject);
+
+            const newJob = {
+                jobId: `OUT-${Math.floor(Date.now() / 100000)}`,
+                customer: aiData.customer,
+                jobName: aiData.jobName,
+                status: 'Poptávka',
+                dateReceived: new Date().toISOString().split('T')[0],
+                items: (aiData.items || []).map((it: any) => ({
+                    id: Math.random().toString(36).substring(2, 11),
+                    description: it.description || '',
+                    quantity: it.quantity || 1,
+                    size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0
+                })),
+                position: { x: 100, y: 100 },
+                isTracked: true,
+                created_at: FieldValue.serverTimestamp()
+            };
+
+            await db.collection('orders').add(newJob);
+            targetJobId = newJob.jobId;
+            console.log('✅ Vytvořena nová karta:', targetJobId);
+        } else {
+            // Pokud ID máme, ověříme existenci
+            const ordersSnapshot = await db.collection('orders')
+                .where('jobId', '==', targetJobId)
+                .limit(1)
+                .get();
+
+            if (ordersSnapshot.empty) {
+                return res.status(404).json({ error: `Job with ID ${targetJobId} not found` });
+            }
         }
 
-        // Create email record
+        // Uložení e-mailu
         const emailData = {
-            zakazka_id,
+            zakazka_id: targetJobId,
             subject,
             entry_id,
             preview: preview || '',
@@ -52,12 +116,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         return res.status(200).json({
             success: true,
-            id: emailRef.id,
-            message: 'Email linked to job successfully'
+            jobId: targetJobId,
+            emailId: emailRef.id,
+            message: 'Email processed successfully'
         });
 
-    } catch (error) {
+    } catch (error: any) {
         console.error('Error processing webhook:', error);
-        return res.status(500).json({ error: 'Internal server error' });
+        return res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 }
