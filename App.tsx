@@ -57,12 +57,38 @@ const App: React.FC = () => {
 
   // --- FIREBASE HELPER FUNKCE --- 
 
+  // Uložení/Aktualizace zakázky ve Firebase
+  const saveToFirebase = async (job: JobData) => {
+    if (!job.jobId) return; // Bez ID nemůžeme syncovat efektivně (nebo bychom museli generovat)
+    try {
+      // Použijeme jobId jako ID dokumentu pro snadné dohledání
+      // NEBO: Pokud ID dokumentu neznáme, musíme query.
+      // Ale 'incoming.js' používá add() -> generuje random ID dokumentu.
+      // My zde používáme `job.id` jako interní react ID. `job.jobId` je "OUT-XXX".
 
+      // Hledáme existující dokument podle jobId
+      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), where('jobId', '==', job.jobId));
+      const snapshot = await getDocs(q);
+
+      if (!snapshot.empty) {
+        // Update existujícího
+        const docRef = snapshot.docs[0].ref;
+        await updateDoc(docRef, { ...job, lastUpdated: serverTimestamp() });
+        console.log('Firebase UPDATE:', job.jobId);
+      } else {
+        // Vytvoření nového
+        await addDoc(collection(db, PUBLIC_ORDERS_COLLECTION), { ...job, created_at: serverTimestamp() });
+        console.log('Firebase CREATE:', job.jobId);
+      }
+    } catch (e) {
+      console.error('Chyba při ukládání do Firebase:', e);
+    }
+  };
 
   // Smazání zakázky z Firebase
   const deleteFromFirebase = async (jobId: string, orderId: string) => {
     try {
-      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("orderNumber", "==", orderId || jobId));
+      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", orderId || jobId));
       const snaps = await getDocs(q);
       snaps.forEach((doc) => {
         deleteDoc(doc.ref);
@@ -79,72 +105,76 @@ const App: React.FC = () => {
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
-  // --- FIREBASE SYNC: Naslouchání změnám v "Zakázka na cestě" ---
+  // --- FIREBASE SYNC: Obousměrná synchronizace ---
   useEffect(() => {
-    // Vytvoříme listener na celou kolekci 'orders'
+    // Posloucháme celou kolekci 'orders'
     const q = query(collection(db, PUBLIC_ORDERS_COLLECTION));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      // Získáme mapu: orderNumber -> { currentStage, isCompleted }
-      const trackingUpdates = new Map();
+      // Získáme všechny změny
+      const changes = snapshot.docChanges();
 
-      snapshot.forEach(doc => {
-        const data = doc.data();
-        if (data.orderNumber) {
-          trackingUpdates.set(data.orderNumber, {
-            stage: data.currentStage,
-            isCompleted: data.isCompleted,
-            isUrgent: data.isUrgent
-          });
-        }
-      });
+      if (changes.length === 0) return;
 
-      // Aktualizujeme lokální stav jobs, pokud se něco změnilo
       setJobs(currentJobs => {
+        let newJobs = [...currentJobs];
         let hasChanges = false;
-        const updatedJobs = currentJobs.map(job => {
-          const update = trackingUpdates.get(job.jobId); // Párujeme podle ID zakázky
 
-          if (update) {
-            // Kontrola změny - abychom nerenderovali zbytečně
-            if (job.trackingStage !== update.stage ||
-              (update.isCompleted && job.status !== JobStatus.COMPLETED) ||
-              (!update.isCompleted && job.status === JobStatus.COMPLETED && job.isTracked) ||
-              // Sync Urgent FROM Tracking TO Board
-              (update.isUrgent && job.status !== JobStatus.EXPRESS && job.status !== JobStatus.COMPLETED) ||
-              (!update.isUrgent && job.status === JobStatus.EXPRESS)) {
+        changes.forEach(change => {
+          const data = change.doc.data() as JobData;
+          // Ignorujeme, pokud data nejsou validní JobData (např. chybí customer)
+          if (!data.jobId) return;
 
-              hasChanges = true;
+          // Hledáme, zda už zakázku máme (podle jobId)
+          const index = newJobs.findIndex(j => j.jobId === data.jobId);
 
-              let newStatus = job.status;
-
-              // 1. Completion has highest priority
-              if (update.isCompleted) {
-                newStatus = JobStatus.COMPLETED;
-              } else if (job.status === JobStatus.COMPLETED && !update.isCompleted) {
-                // If uncoupled, revert to READY_FOR_PROD
-                newStatus = JobStatus.READY_FOR_PROD;
-              }
-              // 2. Urgent sync (only if not completed)
-              else if (update.isUrgent && job.status !== JobStatus.EXPRESS) {
-                newStatus = JobStatus.EXPRESS;
-              } else if (!update.isUrgent && job.status === JobStatus.EXPRESS) {
-                // If urgency removed in tracking, revert to standard production
-                newStatus = JobStatus.READY_FOR_PROD;
-              }
-
-              return {
-                ...job,
-                isTracked: true,
-                trackingStage: update.stage,
-                status: newStatus
+          if (change.type === 'added') {
+            if (index === -1) {
+              // NOVÁ ZAKÁZKA (přišla z webhooku/jiného klienta)
+              // Musíme zajistit, že má všechny potřebné fieldy pro UI
+              const newJob: JobData = {
+                ...data,
+                id: Math.random().toString(36).substring(2, 11), // Vygenerujeme lokální ID pro React key
+                // Pokud chybí, doplníme defaulty
+                status: data.status || JobStatus.INQUIRY,
+                position: data.position || { x: 100, y: 100 },
+                items: data.items || [],
+                technology: data.technology || [],
+                dateReceived: data.dateReceived || new Date().toISOString().split('T')[0]
               };
+              newJobs = [newJob, ...newJobs]; // Přidáme na začátek
+              hasChanges = true;
+              console.log('📥 Stažena nová zakázka z Firebase:', data.jobId);
             }
           }
-          return job;
+
+          if (change.type === 'modified') {
+            if (index !== -1) {
+              // AKTUALIZACE EXISTUJÍCÍ (sync změn, např. statusu)
+              // Porovnáme, abychom nepřekreslovali zbytečně
+              // (Zde by to chtělo deep compare, ale pro jednoduchost přepíšeme)
+              // POZOR: Nechceme přepsat lokální stav (např. otevřený modal), pokud to není nutné.
+              // Pro teď aktualizujeme status a trackingStage, což je nejdůležitější.
+              const current = newJobs[index];
+              if (current.status !== data.status || current.trackingStage !== data.trackingStage) {
+                newJobs[index] = { ...current, ...data }; // Merge dat
+                hasChanges = true;
+                console.log('🔄 Aktualizována zakázka z Firebase:', data.jobId);
+              }
+            }
+          }
+
+          if (change.type === 'removed') {
+            if (index !== -1) {
+              // SMAZÁNO JINDE
+              newJobs.splice(index, 1);
+              hasChanges = true;
+              console.log('🗑️ Odstraněna zakázka (sync):', data.jobId);
+            }
+          }
         });
 
-        return hasChanges ? updatedJobs : currentJobs;
+        return hasChanges ? newJobs : currentJobs;
       });
     }, (error) => {
       console.error("Firebase sync error:", error);
@@ -501,30 +531,18 @@ Text poptávky: "${aiText}"`,
   };
 
   const handleSaveJob = (data: JobData) => {
+    // 1. Lokální update (optimistický)
     setJobs(prev => {
       const exists = prev.find(j => j.id === data.id);
       if (exists) return prev.map(j => j.id === data.id ? data : j);
       return [data, ...prev];
     });
+
+    // 2. Uložení do Firebase (na pozadí)
+    saveToFirebase(data);
+
     setIsModalOpen(false);
     setSelectedJob(null);
-
-    // Pokud je to nová zakázka (není v prev), mohli bychom ji chtít poslat do Firebase
-    // Ale handleSaveJob se volá i při editaci.
-    // Pro jednoduchost: Pokud zakázka ještě "nebyla trackovaná" (nemá trackingStage), pošleme ji tam?
-    // Nebo raději jen při handleCreateJob? -> Uděláme to chytřeji:
-    // Pokud uživatel vytvoří novou zakázku ručně, 'handleCreateJob' jen otevře modal.
-    // Teprve tady 'handleSaveJob' ji reálně uloží.
-    // Takže musíme zjistit, jestli jde o create nebo update.
-
-    // Zjednodušení: Pokud ID nexistuje v předchozím stavu jobs -> je to nová zakázka -> šup do Firebase
-    // ALE `setJobs` používá callback, takže k `prev` se tady nedostaneme snadno outside.
-    // Využijeme fakt, že `selectedJob` měl nějaká data při otevření.
-    // Pokud editujeme existující, `selectedJob` byl v `jobs`.
-
-    // Kontrola existence v aktuálním `jobs` state před update
-    const isNew = !jobs.find(j => j.id === data.id);
-
   };
 
   const handleDeleteJob = (id: string) => {
