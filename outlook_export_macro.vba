@@ -39,9 +39,22 @@ Sub PoslatDoAplikace()
               "}"
 
     ' 5. Odeslání
+    On Error Resume Next
     Set http = CreateObject("MSXML2.XMLHTTP")
+    If http Is Nothing Then Set http = CreateObject("Microsoft.XMLHTTP")
+    
+    If http Is Nothing Then
+        MsgBox "❌ Nelze vytvořit HTTP objekt. Kontaktujte správce.", vbCritical
+        Exit Sub
+    End If
+
     http.Open "POST", url, False
     http.setRequestHeader "Content-Type", "application/json"
+    
+    ' Pokus o timeout (jen pro ServerXMLHTTP, u XMLHTTP se ignoruje)
+    On Error Resume Next
+    http.setTimeouts 5000, 5000, 10000, 10000
+    On Error GoTo 0
     
     On Error Resume Next
     http.Send payload
