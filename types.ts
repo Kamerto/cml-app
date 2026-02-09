@@ -53,3 +53,12 @@ export interface Column {
   borderColor: string;
   accentColor: string;
 }
+
+export interface JobEmail {
+  id: string;
+  zakazka_id: string;
+  subject: string;
+  entry_id: string;
+  preview: string;
+  created_at: string;
+}

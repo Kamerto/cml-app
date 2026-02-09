@@ -1,13 +1,15 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { collection, query, where, getDocs, orderBy } from 'firebase/firestore';
+import { db } from '../firebase';
 import {
   X, Save, Printer, Trash2, Plus,
   Hash, MapPin, ChevronRight,
   Calendar, Building, FileText, Cpu, Sparkles, Bot, Loader2,
   CheckCircle2, List, Zap, Map, Settings, Wand2, Merge,
-  Maximize, Layers, Scissors, Truck
+  Maximize, Layers, Scissors, Truck, Mail
 } from 'lucide-react';
-import { JobData, PrintItem, JobStatus } from '../types';
+import { JobData, PrintItem, JobStatus, JobEmail } from '../types';
 import { PAPER_TYPES, BINDING_TYPES, LAMINA_TYPES, COLUMNS } from '../constants';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -211,6 +213,10 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [showAiInput, setShowAiInput] = useState(false);
   const [itemAiInputId, setItemAiInputId] = useState<string | null>(null);
   const [itemAiText, setItemAiText] = useState('');
+  const [showPrintEdit, setShowPrintEdit] = useState(false);
+  const [extraPrintNote, setExtraPrintNote] = useState('');
+  const [relatedEmails, setRelatedEmails] = useState<JobEmail[]>([]);
+  const [loadingEmails, setLoadingEmails] = useState(false);
 
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
     setFormData(prev => ({ ...prev, items: prev.items.map(i => i.id === id ? { ...i, [field]: val } : i) }));
@@ -299,7 +305,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     try {
       const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
       if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        alert("Není nastaven API klíč. Prosím nastavte ho v hlavním nastavení Tabule (ikona ozubeného kolečko v záhlaví).");
+        alert("Není nastaven API klíč. Prosím nastavte ho v hlavním nastavení Tabule (ikona ozubeného kočko v záhlaví).");
         setIsAiFilling(false);
         return;
       }
@@ -536,7 +542,7 @@ Text: "${itemAiText}"`,
         <header className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-5">
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-xl border border-slate-700">
-              <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">CML Bag 2.0</span>
+              <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">CML Bag 2.1</span>
             </div>
             <div className="flex flex-col">
               <h2 className={`font-black text-xl truncate max-w-[180px] md:max-w-md leading-none tracking-tight ${!formData.customer ? 'text-amber-500 italic' : 'text-slate-100'}`}>
@@ -564,11 +570,38 @@ Text: "${itemAiText}"`,
         <div className="flex-1 flex overflow-hidden">
           <aside className="w-60 bg-slate-900/50 border-r border-slate-800/80 p-5 space-y-3 shrink-0 overflow-y-auto">
             <div className="text-[10px] font-black text-slate-600 uppercase mb-4 px-3 tracking-widest">Fáze zakázky</div>
-            {COLUMNS.map(col => (
-              <button key={col.id} onClick={() => handleStatusChange(col.id)} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-black transition-all border-2 ${formData.status === col.id ? `${col.color} border-white text-white shadow-lg` : `bg-slate-800/40 border-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300`}`}>
-                {formData.status === col.id ? <CheckCircle2 className="w-4.5 h-4.5" /> : <FileText className="w-4.5 h-4.5 opacity-40" />}{col.title}
-              </button>
-            ))}
+            {COLUMNS.map(col => {
+              const isActive = formData.status === col.id;
+              let customStyle: React.CSSProperties = {};
+
+              if (isActive && col.id === JobStatus.READY_FOR_PROD) {
+                const hasOfset = formData.technology?.includes('OFSET');
+                const hasDigi = formData.technology?.includes('DIGI');
+
+                if (hasOfset && hasDigi) {
+                  customStyle = { background: 'linear-gradient(to right, #f97316, #0ea5e9)' };
+                } else if (hasOfset) {
+                  customStyle = { backgroundColor: '#f97316' };
+                } else if (hasDigi) {
+                  customStyle = { backgroundColor: '#0ea5e9' };
+                }
+              }
+
+              return (
+                <button
+                  key={col.id}
+                  onClick={() => handleStatusChange(col.id)}
+                  className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-2xl text-sm font-black transition-all border-2 ${isActive
+                    ? `${customStyle.background || customStyle.backgroundColor ? '' : col.color} border-white text-white shadow-lg`
+                    : `bg-slate-800/40 border-transparent text-slate-500 hover:bg-slate-800 hover:text-slate-300`
+                    }`}
+                  style={customStyle}
+                >
+                  {isActive ? <CheckCircle2 className="w-4.5 h-4.5" /> : <FileText className="w-4.5 h-4.5 opacity-40" />}
+                  {col.title}
+                </button>
+              );
+            })}
 
           </aside>
 
@@ -610,6 +643,86 @@ Text: "${itemAiText}"`,
                     onChange={(val) => setFormData({ ...formData, generalNotes: val })}
                     placeholder="Doplňující informace pro kolegy..."
                   />
+                </div>
+
+                {/* Související e-maily section */}
+                <div className="mt-8">
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="block text-xs font-black text-slate-600 uppercase flex items-center gap-2 tracking-widest">
+                      <Mail className="w-4 h-4 text-purple-400" /> Související e-maily
+                    </label>
+                    <button
+                      onClick={async () => {
+                        if (!formData.jobId) {
+                          alert('Nejprve vyplňte číslo zakázky (ID)');
+                          return;
+                        }
+                        setLoadingEmails(true);
+                        try {
+                          const emailsQuery = query(
+                            collection(db, 'zakazka_emails'),
+                            where('zakazka_id', '==', formData.jobId),
+                            orderBy('created_at', 'desc')
+                          );
+                          const snapshot = await getDocs(emailsQuery);
+                          const emails: JobEmail[] = snapshot.docs.map(doc => ({
+                            id: doc.id,
+                            ...doc.data()
+                          } as JobEmail));
+                          setRelatedEmails(emails);
+                        } catch (error) {
+                          console.error('Error fetching emails:', error);
+                          alert('Chyba při načítání e-mailů');
+                        } finally {
+                          setLoadingEmails(false);
+                        }
+                      }}
+                      className="flex items-center gap-2 px-4 py-2 bg-purple-600/10 hover:bg-purple-600/20 text-purple-400 rounded-xl text-xs font-bold transition-all"
+                    >
+                      {loadingEmails ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                      Načíst e-maily
+                    </button>
+                  </div>
+
+                  {relatedEmails.length > 0 ? (
+                    <div className="space-y-3">
+                      {relatedEmails.map(email => (
+                        <div
+                          key={email.id}
+                          className="bg-slate-800/40 border border-slate-700 rounded-xl p-4 hover:bg-slate-800/70 transition-all group"
+                        >
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Mail className="w-4 h-4 text-purple-400 shrink-0" />
+                                <h4 className="text-sm font-bold text-slate-200 truncate">{email.subject}</h4>
+                              </div>
+                              {email.preview && (
+                                <p className="text-xs text-slate-500 line-clamp-2 mt-1">{email.preview}</p>
+                              )}
+                              <p className="text-[10px] text-slate-600 mt-2">
+                                {new Date(email.created_at).toLocaleString('cs-CZ')}
+                              </p>
+                            </div>
+                            <a
+                              href={`outlook:${email.entry_id}`}
+                              className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded-lg text-xs font-bold transition-all shrink-0"
+                              title="Otevřít v Outlooku"
+                            >
+                              <Mail className="w-4 h-4" />
+                              Otevřít
+                            </a>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="bg-slate-800/20 border border-slate-700/50 rounded-xl p-6 text-center">
+                      <Mail className="w-8 h-8 text-slate-600 mx-auto mb-2" />
+                      <p className="text-sm text-slate-500">Žádné e-maily zatím nejsou propojeny s touto zakázkou</p>
+                      <p className="text-xs text-slate-600 mt-1">Použijte tlačítko v Outlooku pro export e-mailu</p>
+                    </div>
+                  )}
                 </div>
               </div>
             ) : (
@@ -871,7 +984,7 @@ Text: "${itemAiText}"`,
         <footer className="bg-slate-800 border-t border-slate-700 px-10 py-6 flex items-center justify-between shrink-0">
           <div className="flex gap-4">
             <button
-              onClick={() => window.print()}
+              onClick={() => setShowPrintEdit(true)}
               className="flex items-center gap-3 px-6 py-3 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl text-sm font-black transition-all shadow-lg active:scale-95"
             >
               <Printer className="w-5 h-5 opacity-60" /> Tisk souhrnu
@@ -1000,11 +1113,235 @@ Text: "${itemAiText}"`,
           </div>
         )}
 
+        {extraPrintNote && (
+          <div className="mt-8 pt-6 border-t-4 border-slate-950 print-avoid-break bg-slate-50 p-6">
+            <h4 className="text-[12px] font-black uppercase text-slate-950 mb-3 leading-none">Dodatečné informace k tisku</h4>
+            <p className="text-base text-slate-950 leading-relaxed whitespace-pre-wrap font-bold">{extraPrintNote}</p>
+          </div>
+        )}
+
         <div className="mt-20 border-t border-slate-100 pt-4 flex justify-between items-center opacity-50">
           <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">CML BOARD • {formData.jobId || 'SOUHRN'}</p>
           <p className="text-[8px] font-bold text-slate-400">{new Date().toLocaleString('cs-CZ')}</p>
         </div>
       </div>
+
+      {/* --- MODAL PRO EDITACI PŘED TISKEM (TABULKOVÝ EDITOR) --- */}
+      {showPrintEdit && (
+        <div className="fixed inset-0 bg-black/95 backdrop-blur-xl z-[4000] flex items-center justify-center p-0 md:p-4 print:hidden animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-6xl h-full md:h-[95vh] rounded-none md:rounded-3xl shadow-2xl overflow-hidden flex flex-col">
+            <header className="bg-slate-800 px-8 py-5 border-b border-slate-700 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-4">
+                <div className="bg-purple-600 p-2 rounded-lg"><Printer className="w-5 h-5 text-white" /></div>
+                <div>
+                  <h3 className="text-xl font-black text-white leading-none">Úprava souhrnu před tiskem</h3>
+                  <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1.5 outline-none">Zde můžete doladit údaje, které se objeví na papíře</p>
+                </div>
+              </div>
+              <button onClick={() => setShowPrintEdit(false)} className="text-slate-500 hover:text-white transition-colors bg-slate-700/50 p-2 rounded-xl">
+                <X className="w-6 h-6" />
+              </button>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-8 space-y-8 custom-scrollbar">
+              {/* Hlavička zakázky */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 bg-slate-800/30 p-6 rounded-2xl border border-slate-700/50">
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Zákazník</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    value={formData.customer}
+                    onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Název zakázky</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    value={formData.jobName}
+                    onChange={(e) => setFormData({ ...formData, jobName: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Termín</label>
+                  <input
+                    type="text"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm font-bold text-white focus:ring-2 focus:ring-purple-500 outline-none"
+                    value={formData.deadline}
+                    onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              {/* Tabulka položek */}
+              <div className="space-y-4">
+                <h4 className="text-xs font-black text-purple-400 uppercase tracking-widest flex items-center gap-2">
+                  <Layers className="w-4 h-4" /> Položky k tisku (Editovatelné)
+                </h4>
+                <div className="border border-slate-700 rounded-2xl overflow-hidden bg-slate-950 shadow-2xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="bg-slate-800/80 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <th className="px-4 py-4 border-r border-slate-700">Název / Popis položky</th>
+                        <th className="px-4 py-4 border-r border-slate-700 w-28">Formát</th>
+                        <th className="px-4 py-4 border-r border-slate-700 w-24 text-center">Barvy</th>
+                        <th className="px-4 py-4 border-r border-slate-700 w-28 text-center">Náklad</th>
+                        <th className="px-4 py-4 border-r border-slate-700">Papír</th>
+                        <th className="px-4 py-4 w-24 text-center">Gramáž</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {formData.items.map((item, idx) => (
+                        <tr key={item.id} className="border-t border-slate-700 hover:bg-slate-800/30 transition-colors">
+                          <td className="p-1 border-r border-slate-700">
+                            <textarea
+                              className="w-full bg-transparent border-none px-3 py-2 text-sm text-white font-bold resize-none focus:ring-1 focus:ring-purple-500 rounded outline-none h-14"
+                              value={item.description}
+                              onChange={(e) => updateItem(item.id, 'description', e.target.value)}
+                            />
+                          </td>
+                          <td className="p-1 border-r border-slate-700">
+                            <input
+                              className="w-full bg-transparent border-none px-3 py-2 text-sm text-white font-bold focus:ring-1 focus:ring-purple-500 rounded outline-none text-center"
+                              value={item.size}
+                              onChange={(e) => updateItem(item.id, 'size', e.target.value)}
+                            />
+                          </td>
+                          <td className="p-1 border-r border-slate-700">
+                            <input
+                              className="w-full bg-transparent border-none px-3 py-2 text-sm text-white font-bold focus:ring-1 focus:ring-purple-500 rounded outline-none text-center"
+                              value={item.colors}
+                              onChange={(e) => updateItem(item.id, 'colors', e.target.value)}
+                            />
+                          </td>
+                          <td className="p-1 border-r border-slate-700">
+                            <div className="flex items-center">
+                              <input
+                                type="number"
+                                className="w-full bg-transparent border-none px-3 py-2 text-sm text-white font-black focus:ring-1 focus:ring-purple-500 rounded outline-none text-center"
+                                value={item.quantity || ''}
+                                placeholder="0"
+                                onChange={(e) => updateItem(item.id, 'quantity', parseInt(e.target.value) || 0)}
+                              />
+                              <span className="text-[10px] text-slate-500 pr-2">ks</span>
+                            </div>
+                          </td>
+                          <td className="p-1 border-r border-slate-700">
+                            <input
+                              className="w-full bg-transparent border-none px-3 py-2 text-sm text-white italic focus:ring-1 focus:ring-purple-500 rounded outline-none"
+                              value={item.paperType}
+                              onChange={(e) => updateItem(item.id, 'paperType', e.target.value)}
+                            />
+                          </td>
+                          <td className="p-1">
+                            <input
+                              className="w-full bg-transparent border-none px-3 py-2 text-sm text-white font-bold focus:ring-1 focus:ring-purple-500 rounded outline-none text-center"
+                              value={item.paperWeight}
+                              onChange={(e) => updateItem(item.id, 'paperWeight', e.target.value)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Poznámky a doplňky */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                <div className="space-y-4">
+                  <h4 className="text-xs font-black text-slate-500 uppercase tracking-widest">Knihárna & Zpracování</h4>
+                  <div className="bg-slate-800/20 p-5 rounded-2xl border border-slate-700/50 space-y-4">
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-600 uppercase mb-1.5 ml-1">Vazba</label>
+                      <input
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:ring-1 focus:ring-purple-500"
+                        value={formData.bindingType}
+                        onChange={(e) => setFormData({ ...formData, bindingType: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-600 uppercase mb-1.5 ml-1">Laminace</label>
+                      <input
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:ring-1 focus:ring-purple-500"
+                        value={formData.laminationType}
+                        onChange={(e) => setFormData({ ...formData, laminationType: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[9px] font-black text-slate-600 uppercase mb-1.5 ml-1">Ostatní zpracování</label>
+                      <textarea
+                        className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white outline-none focus:ring-1 focus:ring-purple-500 h-20 resize-none font-medium italic"
+                        value={formData.processing}
+                        onChange={(e) => setFormData({ ...formData, processing: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="space-y-4">
+                    <h4 className="text-xs font-black text-amber-500 uppercase tracking-widest flex items-center gap-2">
+                      <Printer className="w-4 h-4" /> Doplňující info k tomuto tisku
+                    </h4>
+                    <textarea
+                      className="w-full h-32 bg-slate-900 border-2 border-amber-600/30 rounded-2xl p-5 text-slate-100 font-bold focus:ring-2 focus:ring-amber-500 outline-none resize-none shadow-inner"
+                      placeholder="NAPŘ: ZABALIT DO KRABIC PO 100 KS, NEBO ČÍSLOVAT OD 1001..."
+                      value={extraPrintNote}
+                      onChange={(e) => setExtraPrintNote(e.target.value)}
+                    />
+                    <p className="text-[10px] text-slate-500 italic px-2">Tyto žluté informace se neuloží k zakázce, jsou jen pro tento tisk.</p>
+                  </div>
+
+                  <div className="bg-slate-800/30 p-5 rounded-2xl border border-slate-700/50">
+                    <label className="block text-[9px] font-black text-slate-600 uppercase mb-1.5 ml-1 leading-none">Doručovací adresa</label>
+                    <textarea
+                      className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-xs text-white font-bold italic outline-none focus:ring-1 focus:ring-purple-500 h-16 resize-none"
+                      value={formData.address}
+                      onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <footer className="bg-slate-800 px-10 py-6 border-t border-slate-700 flex justify-between items-center shrink-0">
+              <button
+                onClick={() => setShowPrintEdit(false)}
+                className="px-8 py-3 text-sm font-black text-slate-500 hover:text-white transition-colors uppercase tracking-widest bg-slate-700/30 rounded-xl"
+              >
+                ZRUŠIT
+              </button>
+
+              <div className="flex gap-4">
+                <button
+                  onClick={() => {
+                    // Uložíme lokálně do parenta Tabule, aby změny zůstaly v systému
+                    onSave(formData);
+                    setShowPrintEdit(false);
+                    setTimeout(() => window.print(), 100);
+                  }}
+                  className="flex items-center gap-3 px-8 py-4 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl text-sm font-black shadow-xl active:scale-95 transition-all"
+                >
+                  <Save className="w-5 h-5 opacity-40 text-purple-600" /> ULOŽIT DO TABULE & TISKNOUT
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowPrintEdit(false);
+                    setTimeout(() => window.print(), 100);
+                  }}
+                  className="flex items-center gap-3 px-10 py-4 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl text-sm font-black shadow-xl shadow-purple-950/40 active:scale-95 transition-all border-b-4 border-purple-800"
+                >
+                  <Printer className="w-5 h-5" /> JEN TISKNOUT
+                </button>
+              </div>
+            </footer>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
