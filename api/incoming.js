@@ -1,7 +1,6 @@
 const admin = require('firebase-admin');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
-const { getFirestore } = require('firebase-admin/firestore');
-const FieldValue = admin.firestore.FieldValue;
+const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { GoogleGenAI } = require('@google/genai');
 
 // Initialize Firebase Admin
@@ -125,7 +124,7 @@ module.exports = async function handler(req, res) {
             if (!orderSnap.empty) {
                 await orderSnap.docs[0].ref.update({
                     lastEmailEntryId: entry_id,
-                    lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+                    lastUpdated: FieldValue.serverTimestamp()
                 });
             }
         } catch (uErr) {
