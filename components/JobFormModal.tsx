@@ -1,4 +1,5 @@
 
+// VERSION: 2.5
 import React, { useState, useRef, useEffect } from 'react';
 import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';

@@ -1,3 +1,4 @@
+// VERSION: 2.5
 const admin = require('firebase-admin');
 const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
