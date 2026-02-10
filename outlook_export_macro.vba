@@ -1,5 +1,5 @@
 Sub PoslatDoAplikace()
-    ' VERZE: cml-app-final (CLI Deploy - v2.5 Final)
+    ' VERZE: cml-app-final (CLI Deploy - v2.5.2 Emergency)
     Dim objMail As Outlook.MailItem
     Dim strID As String
     Dim strSubject As String

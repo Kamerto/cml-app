@@ -225,8 +225,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     setLoadingEmails(true);
     const emailsQuery = query(
       collection(db, 'zakazka_emails'),
-      where('zakazka_id', '==', formData.jobId),
-      orderBy('created_at', 'desc')
+      where('zakazka_id', '==', formData.jobId)
     );
 
     const unsubscribe = onSnapshot(emailsQuery, (snapshot) => {

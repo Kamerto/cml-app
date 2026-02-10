@@ -65,7 +65,8 @@ module.exports = async function handler(req, res) {
             return res.status(400).json({ error: 'Missing required fields: subject, entry_id' });
         }
 
-        let targetJobId = zakazka_id;
+        const targetJobId = zakazka_id || '';
+        const customerName = targetJobId ? `Zakázka ${targetJobId}` : 'ZÁKAZNÍK Z EMAILU';
 
         // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
         if (!targetJobId) {
