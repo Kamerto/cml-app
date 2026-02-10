@@ -751,23 +751,33 @@ Text: "${itemAiText}"`,
                                 <Mail className="w-4 h-4 text-purple-400 shrink-0" />
                                 <h4 className="text-sm font-bold text-slate-200 truncate">{email.subject}</h4>
                               </div>
+                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
+                                {email.sender && (
+                                  <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
+                                    <Building className="w-3.5 h-3.5 text-slate-500" />
+                                    {email.sender}
+                                  </div>
+                                )}
+                                {email.received_at && (
+                                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
+                                    <Calendar className="w-3.5 h-3.5 text-slate-600" />
+                                    {email.received_at}
+                                  </div>
+                                )}
+                              </div>
                               {email.preview && (
-                                <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed">{email.preview}</p>
+                                <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed italic border-l-2 border-slate-800 pl-3">{email.preview}</p>
                               )}
-                              <p className="text-[10px] text-slate-600 mt-2 font-mono">
-                                {new Date(email.created_at).toLocaleString('cs-CZ')}
+                              <p className="text-[10px] text-slate-600 mt-2 font-mono flex items-center gap-1.5">
+                                < Zap className="w-3 h-3" /> Připojeno: {new Date(email.created_at).toLocaleString('cs-CZ')}
                               </p>
                             </div>
                             <a
                               href={`outlook:${email.entry_id}`}
-                              className="flex items-center gap-2 px-4 py-2 bg-blue-600/10 hover:bg-blue-600 text-blue-400 hover:text-white rounded-xl text-xs font-black transition-all shrink-0 border border-blue-500/20 active:scale-95 shadow-lg shadow-blue-900/10"
+                              className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shrink-0 shadow-lg shadow-blue-900/30 active:scale-95 group-hover:scale-105"
                               title="Otevřít v Outlooku (Desktop)"
-                              onClick={(e) => {
-                                // Prevent default handling if needed, or add logic
-                                // Pro web to nefunguje, ale pro desktop ano.
-                              }}
                             >
-                              <Mail className="w-3.5 h-3.5" />
+                              <Mail className="w-4 h-4" />
                               OTEVŘÍT
                             </a>
                           </div>

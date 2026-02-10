@@ -61,5 +61,7 @@ export interface JobEmail {
   subject: string;
   entry_id: string;
   preview: string;
+  sender?: string;
+  received_at?: string;
   created_at: string;
 }

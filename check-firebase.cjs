@@ -27,47 +27,35 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 async function checkRecentData() {
-    console.log('🔍 Kontrola nedávných dat v Firebase...\n');
+    console.log('🔍 Kontrola dat v Firebase...\n');
+
+    const specificId = 'OUT-369-106';
+    const specificSnapshot = await db.collection('orders').where('jobId', '==', specificId).get();
+
+    if (!specificSnapshot.empty) {
+        console.log(`✅ NALEZENA ZAKÁZKA ${specificId}:`);
+        specificSnapshot.forEach(doc => {
+            console.log(JSON.stringify(doc.data(), null, 2));
+        });
+    } else {
+        console.log(`❌ ZAKÁZKA ${specificId} NENALEZENA.`);
+    }
+
+    // Zakázky
+    const allOrders = await db.collection('orders').get();
+    console.log(`📊 Celkem zakázek v DB: ${allOrders.size}`);
 
     // Zkontrolovat nedávné zakázky
     const ordersSnapshot = await db.collection('orders')
         .orderBy('created_at', 'desc')
-        .limit(10)
+        .limit(5)
         .get();
 
-    console.log(`📦 Posledních 10 zakázek:`);
+    console.log(`📦 Posledních 5 zakázek:`);
     ordersSnapshot.forEach(doc => {
         const data = doc.data();
         const createdAt = data.created_at?.toDate?.() || 'N/A';
-        console.log(`  - ${data.jobId}: ${data.customer} - ${data.jobName}`);
-        console.log(`    Status: ${data.status}, Vytvořeno: ${createdAt}`);
-    });
-
-    // Zkontrolovat e-maily
-    const emailsSnapshot = await db.collection('zakazka_emails')
-        .orderBy('created_at', 'desc')
-        .limit(10)
-        .get();
-
-    console.log(`\n📧 Posledních 10 e-mailů:`);
-    emailsSnapshot.forEach(doc => {
-        const data = doc.data();
-        console.log(`  - ID zakázky: ${data.zakazka_id}`);
-        console.log(`    Subject: ${data.subject}`);
-        console.log(`    Vytvořeno: ${data.created_at}`);
-    });
-
-
-    // Zkontrolovat e-maily s prázdným zakazka_id
-    const emptyIdSnapshot = await db.collection('zakazka_emails')
-        .where('zakazka_id', '==', '')
-        .get();
-
-    console.log(`\n⚠️ E-maily s prázdným zakazka_id: ${emptyIdSnapshot.size}`);
-    emptyIdSnapshot.forEach(doc => {
-        const data = doc.data();
-        console.log(`  - Subject: ${data.subject}`);
-        console.log(`    Entry ID: ${data.entry_id.substring(0, 30)}...`);
+        console.log(`  - ${data.jobId}: ${data.customer} - ${data.jobName} (Status: ${data.status})`);
     });
 
     process.exit(0);

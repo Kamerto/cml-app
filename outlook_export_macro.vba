@@ -1,5 +1,5 @@
 Sub PoslatDoAplikace()
-    ' VERZE: cml-app-final (CLI Deploy)
+    ' VERZE: cml-app-final (CLI Deploy - v2.1 Debug)
     Dim objMail As Outlook.MailItem
     Dim strID As String
     Dim strSubject As String
@@ -8,14 +8,23 @@ Sub PoslatDoAplikace()
     Dim url As String
     Dim payload As String
     Dim zakazkaID As String
+    Dim strSender As String
+    Dim strReceivedAt As String
 
     ' 1. Získání mailu
     On Error Resume Next
     Set objMail = Application.ActiveExplorer.Selection.Item(1)
+    
+    If Err.Number <> 0 Then
+        MsgBox "❌ Chyba při přístupu k výběru e-mailu: " & Err.Description & vbCrLf & _
+               "Ujistěte se, že máte vybraný jeden e-mail v seznamu.", vbCritical
+        On Error GoTo 0
+        Exit Sub
+    End If
     On Error GoTo 0
     
     If objMail Is Nothing Then
-        MsgBox "Není vybrán žádný e-mail.", vbExclamation
+        MsgBox "⚠️ Není vybrán žádný e-mail (objekt je prázdný).", vbExclamation
         Exit Sub
     End If
 
@@ -26,6 +35,8 @@ Sub PoslatDoAplikace()
     strID = objMail.EntryID
     strSubject = objMail.Subject
     strBody = Left(objMail.Body, 2000)
+    strSender = objMail.SenderName
+    strReceivedAt = objMail.ReceivedTime
     
     ' ✅ FINÁLNÍ URL (CLI DEPLOY - v2)
     url = "https://cml-app-v2-nine.vercel.app/api/incoming"
@@ -35,6 +46,8 @@ Sub PoslatDoAplikace()
                 """zakazka_id"": """ & zakazkaID & """, " & _
                 """subject"": """ & CleanJSON(strSubject) & """, " & _
                 """entry_id"": """ & strID & """, " & _
+                """sender"": """ & CleanJSON(strSender) & """, " & _
+                """received_at"": """ & strReceivedAt & """, " & _
                 """preview"": """ & CleanJSON(strBody) & """" & _
               "}"
 

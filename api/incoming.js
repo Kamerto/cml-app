@@ -58,7 +58,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const { zakazka_id, subject, entry_id, preview } = req.body;
+        const { zakazka_id, subject, entry_id, preview, sender, received_at } = req.body;
 
         if (!subject || !entry_id) {
             return res.status(400).json({ error: 'Missing required fields: subject, entry_id' });
@@ -112,6 +112,8 @@ module.exports = async function handler(req, res) {
             subject,
             entry_id,
             preview: preview || '',
+            sender: sender || '',
+            received_at: received_at || '',
             created_at: new Date().toISOString(),
         };
 
