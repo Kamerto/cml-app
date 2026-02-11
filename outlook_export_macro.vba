@@ -1,5 +1,5 @@
 Sub PoslatDoAplikace()
-    ' VERZE: cml-app-final (CLI Deploy - v2.5.2 Emergency)
+    ' VERZE: cml-app-final (CLI Deploy - v2.5.5 Final)
     Dim objMail As Outlook.MailItem
     Dim strID As String
     Dim strSubject As String
@@ -10,6 +10,7 @@ Sub PoslatDoAplikace()
     Dim zakazkaID As String
     Dim strSender As String
     Dim strReceivedAt As String
+    Dim strStoreID As String
 
     ' 1. Získání mailu
     On Error Resume Next
@@ -33,10 +34,10 @@ Sub PoslatDoAplikace()
     
     ' 3. Příprava dat
     strID = objMail.EntryID
+    strStoreID = objMail.Parent.StoreID
     strSubject = objMail.Subject
     strBody = Left(objMail.Body, 2000)
     strSender = objMail.SenderName
-    ' VERZE: cml-app-final (CLI Deploy - v2.5.4 Final)
     strReceivedAt = objMail.ReceivedTime
     
     ' ✅ FINÁLNÍ URL (PRODUKCE)
@@ -47,6 +48,7 @@ Sub PoslatDoAplikace()
                 """zakazka_id"": """ & zakazkaID & """, " & _
                 """subject"": """ & CleanJSON(strSubject) & """, " & _
                 """entry_id"": """ & strID & """, " & _
+                """store_id"": """ & strStoreID & """, " & _
                 """sender"": """ & CleanJSON(strSender) & """, " & _
                 """received_at"": """ & strReceivedAt & """, " & _
                 """preview"": """ & CleanJSON(strBody) & """" & _

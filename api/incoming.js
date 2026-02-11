@@ -113,6 +113,7 @@ module.exports = async function handler(req, res) {
             zakazka_id: targetJobId,
             subject,
             entry_id,
+            store_id: store_id || '',
             preview: preview || '',
             sender: sender || '',
             received_at: received_at || '',
