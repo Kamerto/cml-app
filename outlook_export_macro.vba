@@ -38,10 +38,11 @@ Sub PoslatDoAplikace()
     strSubject = objMail.Subject
     strBody = Left(objMail.Body, 2000)
     strSender = objMail.SenderName
+    ' VERZE: cml-app-final (CLI Deploy - v2.5.6 Final)
     strReceivedAt = objMail.ReceivedTime
     
-    ' ✅ FINÁLNÍ URL (PRODUKCE)
-    url = "https://cml-app-v2.vercel.app/api/incoming"
+    ' ✅ FINÁLNÍ URL (PRODUKCE - NEW)
+    url = "https://cml-app-xdy4.vercel.app/api/incoming"
 
     ' 4. JSON
     payload = "{" & _
