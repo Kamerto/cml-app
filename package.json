@@ -1,7 +1,7 @@
 {
   "name": "cml",
   "private": true,
-  "version": "2.5.7",
+  "version": "2.5.5",
   "engines": {
     "node": ">=20.0.0"
   },

@@ -622,7 +622,7 @@ Text poptávky: "${aiText}"`,
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
             <h1 className="text-xl font-black text-white tracking-tighter uppercase flex items-center gap-2">
               CML BOARD
-              <span className="bg-orange-500 text-white text-[10px] px-2 py-0.5 rounded-full animate-bounce shadow-lg shadow-orange-900/50">v2.5.7 - POUŽIJ CTRL+F5!</span>
+              <span className="bg-emerald-600 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse shadow-lg shadow-emerald-900/50">v2.5.5</span>
             </h1>
           </div>
           <div className="relative">
