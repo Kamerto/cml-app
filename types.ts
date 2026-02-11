@@ -63,5 +63,6 @@ export interface JobEmail {
   preview: string;
   sender?: string;
   received_at?: string;
+  store_id?: string;
   created_at: string;
 }
