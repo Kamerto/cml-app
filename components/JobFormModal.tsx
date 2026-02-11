@@ -775,7 +775,7 @@ Text: "${itemAiText}"`,
                             <a
                               href={`outlook:${email.entry_id}`}
                               className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shrink-0 shadow-lg shadow-blue-900/30 active:scale-95 group-hover:scale-105"
-                              title="Otevřít v Outlooku (Desktop)"
+                              title={`Otevřít v Outlooku${email.store_id ? ` (Store: ${email.store_id.substring(0, 8)}...)` : ''}`}
                             >
                               <Mail className="w-4 h-4" />
                               OTEVŘÍT
