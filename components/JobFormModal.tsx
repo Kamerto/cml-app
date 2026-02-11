@@ -724,6 +724,26 @@ Text: "${itemAiText}"`,
                   />
                 </div>
 
+                {formData.entry_id && (
+                  <div className="mt-6 p-5 bg-blue-600/10 border border-blue-500/30 rounded-2xl flex items-center justify-between group hover:bg-blue-600/20 transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/20">
+                        <Mail className="w-5 h-5 text-white" />
+                      </div>
+                      <div>
+                        <h4 className="text-sm font-black text-blue-100 uppercase tracking-tight">Původní Email</h4>
+                        <p className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Otevřít přímo v desktop aplikaci</p>
+                      </div>
+                    </div>
+                    <a
+                      href={`outlook:${formData.entry_id}`}
+                      className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-xl shadow-blue-900/40 active:scale-95"
+                    >
+                      OTEVŘÍT V OUTLOOKU
+                    </a>
+                  </div>
+                )}
+
                 {/* Související e-maily section */}
                 <div className="mt-8 border-t border-slate-800/50 pt-8">
                   <div className="flex items-center justify-between mb-4">
