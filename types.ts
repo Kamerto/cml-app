@@ -45,6 +45,8 @@ export interface JobData {
   trackingStage?: 'studio' | 'print' | 'bookbinding' | 'completed';
   isTracked?: boolean;
   lastEmailEntryId?: string;
+  entry_id?: string;
+  store_id?: string;
 }
 
 export interface Column {

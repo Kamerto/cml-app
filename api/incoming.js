@@ -90,6 +90,8 @@ module.exports = async function handler(req, res) {
                     y: 100 + Math.floor(Math.random() * 400)
                 },
                 isTracked: true,
+                entry_id: entry_id,
+                store_id: store_id || '',
                 created_at: FieldValue.serverTimestamp()
             };
 
@@ -129,6 +131,8 @@ module.exports = async function handler(req, res) {
             if (!orderSnap.empty) {
                 await orderSnap.docs[0].ref.update({
                     lastEmailEntryId: entry_id,
+                    entry_id: entry_id,
+                    store_id: store_id || '',
                     lastUpdated: FieldValue.serverTimestamp()
                 });
             }

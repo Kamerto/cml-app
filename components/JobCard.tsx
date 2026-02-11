@@ -126,14 +126,15 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
         </div>
 
         <div className={`text-[13px] font-black ${textColorClass} drop-shadow-sm whitespace-nowrap ml-1 flex items-center gap-2`}>
-          {job.lastEmailEntryId && (
+          {job.entry_id && (
             <a
-              href={`outlook:${job.lastEmailEntryId}`}
+              href={`outlook:${job.entry_id}`}
               onClick={(e) => e.stopPropagation()}
-              className="p-1 bg-white/20 hover:bg-white/40 rounded transition-colors"
-              title="Otevřít poslední email v Outlooku"
+              className="px-2 py-1 rounded bg-blue-600 hover:bg-blue-500 text-white text-[9px] font-black transition-all flex items-center gap-1 shadow-lg shadow-blue-900/30"
+              title="Otevřít původní email v Outlooku"
             >
-              <Mail className="w-3.5 h-3.5 text-white" />
+              <Mail className="w-3 h-3" />
+              EMAIL
             </a>
           )}
           <span className={!dateToDisplay ? 'bg-amber-500/30 px-1 rounded ring-1 ring-amber-400/40' : ''}>

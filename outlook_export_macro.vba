@@ -1,5 +1,5 @@
 Sub PoslatDoAplikace()
-    ' VERZE: cml-app-final (CLI Deploy - v2.5.5 Final)
+    ' VERZE: cml-app-final (CLI Deploy - v2.5.6 Final)
     Dim objMail As Outlook.MailItem
     Dim strID As String
     Dim strSubject As String
@@ -38,7 +38,7 @@ Sub PoslatDoAplikace()
     strSubject = objMail.Subject
     strBody = Left(objMail.Body, 2000)
     strSender = objMail.SenderName
-    ' VERZE: cml-app-final (CLI Deploy - v2.5.5 Final)
+    strReceivedAt = Format(objMail.ReceivedTime, "yyyy-mm-ddThh:nn:ss") & "Z"
     
     ' ✅ FINÁLNÍ URL (PRODUKCE)
     url = "https://cml-app-xdy4.vercel.app/api/incoming"
@@ -68,8 +68,6 @@ Sub PoslatDoAplikace()
     http.Open "POST", url, False
     http.setRequestHeader "Content-Type", "application/json"
     
-    ' Nastavení timeoutů (v milisekundách): resolve, connect, send, receive
-    ' U ServerXMLHTTP je toto funkční a zabrání záseku Outlooku.
     On Error Resume Next
     http.setTimeouts 5000, 5000, 10000, 10000
     On Error GoTo 0
@@ -85,7 +83,6 @@ Sub PoslatDoAplikace()
     On Error GoTo 0
     
     If Err.Number = 0 Then
-        ' Odstranění případného BOM nebo paznaků na začátku
         Dim cleanResp As String
         cleanResp = http.responseText
         If Left(cleanResp, 1) = "?" Then cleanResp = Mid(cleanResp, 2)
