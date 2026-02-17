@@ -6,6 +6,6 @@
         }
     ],
     "env": {
-        "DEPLOY_ID": "v2.5-FORCE-REDEPLOY-1538"
+        "DEPLOY_ID": "v2.5.6-DEPLOY-1509"
     }
 }
