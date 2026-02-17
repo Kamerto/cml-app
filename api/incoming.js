@@ -19,7 +19,7 @@ const db = getFirestore();
 
 // AI Funkce pro parsování e-mailu
 async function parseEmailWithAI(preview, subject) {
-    const apiKey = process.env.GEMINI_API_KEY;
+    const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
         return { customer: 'Neznámý (Outlook)', jobName: subject, items: [] };
     }

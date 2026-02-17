@@ -3,12 +3,13 @@ module.exports = async function handler(req, res) {
         FIREBASE_PROJECT_ID: !!process.env.FIREBASE_PROJECT_ID,
         FIREBASE_CLIENT_EMAIL: !!process.env.FIREBASE_CLIENT_EMAIL,
         FIREBASE_PRIVATE_KEY: !!process.env.FIREBASE_PRIVATE_KEY,
-        GEMINI_API_KEY: !!process.env.GEMINI_API_KEY,
+        GEMINI_API_KEY: !!(process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY),
         details: {
             projectId: process.env.FIREBASE_PROJECT_ID || 'MISSING',
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL ? 'SET' : 'MISSING',
             privateKey: process.env.FIREBASE_PRIVATE_KEY ? 'SET (length: ' + process.env.FIREBASE_PRIVATE_KEY.length + ')' : 'MISSING',
-            geminiKey: process.env.GEMINI_API_KEY ? 'SET' : 'MISSING'
+            geminiKey: (process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY) ? 'SET' : 'MISSING',
+            keyName: process.env.VITE_GEMINI_API_KEY ? 'VITE_GEMINI_API_KEY' : (process.env.GEMINI_API_KEY ? 'GEMINI_API_KEY' : 'NONE')
         }
     };
 
