@@ -216,32 +216,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [itemAiText, setItemAiText] = useState('');
   const [showPrintEdit, setShowPrintEdit] = useState(false);
   const [extraPrintNote, setExtraPrintNote] = useState('');
-  const [relatedEmails, setRelatedEmails] = useState<JobEmail[]>([]);
-  const [loadingEmails, setLoadingEmails] = useState(false);
-
-  useEffect(() => {
-    if (!formData.jobId || activeTab !== 'details') return;
-
-    setLoadingEmails(true);
-    const emailsQuery = query(
-      collection(db, 'zakazka_emails'),
-      where('zakazka_id', '==', formData.jobId)
-    );
-
-    const unsubscribe = onSnapshot(emailsQuery, (snapshot) => {
-      const emails: JobEmail[] = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as JobEmail));
-      setRelatedEmails(emails);
-      setLoadingEmails(false);
-    }, (error) => {
-      console.error('Error listening to emails:', error);
-      setLoadingEmails(false);
-    });
-
-    return () => unsubscribe();
-  }, [formData.jobId, activeTab]);
+  const [extraPrintNote, setExtraPrintNote] = useState('');
 
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
     setFormData(prev => ({ ...prev, items: prev.items.map(i => i.id === id ? { ...i, [field]: val } : i) }));
@@ -744,76 +719,6 @@ Text: "${itemAiText}"`,
                   </div>
                 )}
 
-                {/* Související e-maily section */}
-                <div className="mt-8 border-t border-slate-800/50 pt-8">
-                  <div className="flex items-center justify-between mb-4">
-                    <label className="block text-xs font-black text-slate-600 uppercase flex items-center gap-2 tracking-widest">
-                      <Mail className="w-4 h-4 text-purple-400" /> Související e-maily
-                    </label>
-                    {loadingEmails && (
-                      <div className="flex items-center gap-2 text-slate-500 text-[10px] font-bold">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                        AKTUALIZUJI...
-                      </div>
-                    )}
-                  </div>
-
-                  {relatedEmails.length > 0 ? (
-                    <div className="space-y-3">
-                      {relatedEmails.map(email => (
-                        <div
-                          key={email.id}
-                          className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 hover:bg-slate-800/70 transition-all group animate-in slide-in-from-top-2"
-                        >
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-1">
-                                <Mail className="w-4 h-4 text-purple-400 shrink-0" />
-                                <h4 className="text-sm font-bold text-slate-200 truncate">{email.subject}</h4>
-                              </div>
-                              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mb-2">
-                                {email.sender && (
-                                  <div className="flex items-center gap-1.5 text-xs text-slate-400 font-medium">
-                                    <Building className="w-3.5 h-3.5 text-slate-500" />
-                                    {email.sender}
-                                  </div>
-                                )}
-                                {email.received_at && (
-                                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-mono">
-                                    <Calendar className="w-3.5 h-3.5 text-slate-600" />
-                                    {email.received_at}
-                                  </div>
-                                )}
-                              </div>
-                              {email.preview && (
-                                <p className="text-xs text-slate-500 line-clamp-2 mt-1 leading-relaxed italic border-l-2 border-slate-800 pl-3">{email.preview}</p>
-                              )}
-                              <p className="text-[10px] text-slate-600 mt-2 font-mono flex items-center gap-1.5">
-                                < Zap className="w-3 h-3" /> Připojeno: {new Date(email.created_at).toLocaleString('cs-CZ')}
-                              </p>
-                            </div>
-                            <a
-                              href={`outlook:${email.entry_id}`}
-                              className="flex items-center gap-2 px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shrink-0 shadow-lg shadow-blue-900/30 active:scale-95 group-hover:scale-105"
-                              title={`Otevřít v Outlooku${email.store_id ? ` (Store: ${email.store_id.substring(0, 8)}...)` : ''}`}
-                            >
-                              <Mail className="w-4 h-4" />
-                              OTEVŘÍT
-                            </a>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="bg-slate-800/20 border-2 border-dashed border-slate-700/50 rounded-2xl p-8 text-center">
-                      <Mail className="w-10 h-10 text-slate-700 mx-auto mb-3 opacity-50" />
-                      <p className="text-sm font-bold text-slate-500">Žádné propojené e-maily</p>
-                      <p className="text-[11px] text-slate-600 mt-1 max-w-[240px] mx-auto">
-                        Tato sekce se automaticky zaktualizuje, jakmile na zakázku pošlete e-mail z Outlooku.
-                      </p>
-                    </div>
-                  )}
-                </div>
               </div>
             ) : (
               <div className="space-y-10 pb-12 animate-in fade-in slide-in-from-right-4">
