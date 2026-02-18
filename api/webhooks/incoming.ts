@@ -58,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const { zakazka_id, subject, entry_id, preview } = req.body;
+        const { zakazka_id, subject, entry_id, store_id, preview } = req.body;
 
         if (!subject || !entry_id) {
             return res.status(400).json({ error: 'Missing required fields: subject, entry_id' });
@@ -85,6 +85,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 })),
                 position: { x: 100, y: 100 },
                 isTracked: true,
+                entry_id: entry_id,
+                store_id: store_id || '',
                 created_at: FieldValue.serverTimestamp()
             };
 
@@ -108,6 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             zakazka_id: targetJobId,
             subject,
             entry_id,
+            store_id: store_id || '',
             preview: preview || '',
             created_at: new Date().toISOString(),
         };
