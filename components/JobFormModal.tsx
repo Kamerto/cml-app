@@ -1,7 +1,6 @@
 
 // VERSION: 2.5
 import React, { useState, useRef, useEffect } from 'react';
-import { collection, query, where, getDocs, orderBy, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import {
   X, Save, Printer, Trash2, Plus,
@@ -10,7 +9,7 @@ import {
   CheckCircle2, List, Zap, Map, Settings, Wand2, Merge,
   Maximize, Layers, Scissors, Truck, Mail
 } from 'lucide-react';
-import { JobData, PrintItem, JobStatus, JobEmail } from '../types';
+import { JobData, PrintItem, JobStatus } from '../types';
 import { PAPER_TYPES, BINDING_TYPES, LAMINA_TYPES, COLUMNS } from '../constants';
 import { GoogleGenAI, Type } from '@google/genai';
 
@@ -215,7 +214,6 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [itemAiInputId, setItemAiInputId] = useState<string | null>(null);
   const [itemAiText, setItemAiText] = useState('');
   const [showPrintEdit, setShowPrintEdit] = useState(false);
-  const [extraPrintNote, setExtraPrintNote] = useState('');
   const [extraPrintNote, setExtraPrintNote] = useState('');
 
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
