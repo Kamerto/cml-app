@@ -170,14 +170,10 @@ const App: React.FC = () => {
 
           if (change.type === 'modified') {
             if (index !== -1) {
-              // AKTUALIZACE EXISTUJÍCÍ (sync změn, např. statusu)
-              // Porovnáme, abychom nepřekreslovali zbytečně
-              // (Zde by to chtělo deep compare, ale pro jednoduchost přepíšeme)
-              // POZOR: Nechceme přepsat lokální stav (např. otevřený modal), pokud to není nutné.
-              // Pro teď aktualizujeme status a trackingStage, což je nejdůležitější.
               const current = newJobs[index];
               if (current.status !== data.status || current.trackingStage !== data.trackingStage) {
-                newJobs[index] = { ...current, ...data }; // Merge dat
+                // isNew je pouze lokální stav – nepřepisujeme ho daty z Firebase
+                newJobs[index] = { ...current, ...data, isNew: current.isNew };
                 hasChanges = true;
                 console.log('🔄 Aktualizována zakázka z Firebase:', data.jobId);
               }
@@ -520,29 +516,11 @@ Text poptávky: "${aiText}"`,
   };
 
   const handleCreateJob = () => {
-    const stepX = 200;
-    const stepY = 210;
-
-    // Umístíme novou zakázku do aktuálně viditelné části workspace
+    // Umístíme novou zakázku vždy nahoru viditelné části workspace
     const ws = workspaceRef.current;
     const scrollX = ws ? ws.scrollLeft : 0;
     const scrollY = ws ? ws.scrollTop : 0;
-    const startX = scrollX + 60;
-    const startY = scrollY + 80;
-
-    const cols = Math.max(3, Math.floor((window.innerWidth - 100) / stepX));
-    let pos = { x: startX, y: startY };
-
-    find_pos: for (let row = 0; row < 100; row++) {
-      for (let col = 0; col < cols; col++) {
-        const x = startX + col * stepX;
-        const y = startY + row * stepY;
-        if (!jobs.some(j => Math.abs(j.position.x - x) < 50 && Math.abs(j.position.y - y) < 50)) {
-          pos = { x, y };
-          break find_pos;
-        }
-      }
-    }
+    const pos = { x: scrollX + 60, y: scrollY + 80 };
 
     const tempId = `TEMP-${Date.now()}`;
     const newJob: JobData = {
@@ -657,7 +635,7 @@ Text poptávky: "${aiText}"`,
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
             <h1 className="text-xl font-black text-white tracking-tighter uppercase flex items-center gap-2">
               CML BOARD
-              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.6.8</span>
+              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.6.9</span>
             </h1>
           </div>
           <div className="relative">
