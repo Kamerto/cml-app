@@ -6,6 +6,6 @@
         }
     ],
     "env": {
-        "DEPLOY_ID": "v2.6.9-DEPLOY-1731-FORCE"
+        "DEPLOY_ID": "v2.7.1-FORCE-DEPLOY-1800-FIX"
     }
 }
