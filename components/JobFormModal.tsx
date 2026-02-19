@@ -542,29 +542,7 @@ Text: "${itemAiText}"`,
             <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-900 rounded-xl border border-slate-700">
               <span className="text-[10px] font-black text-purple-400 uppercase tracking-widest">CML Bag 2.1</span>
             </div>
-            <div className="flex flex-col">
-              <h2 className={`font-black text-xl truncate max-w-[180px] md:max-w-md leading-none tracking-tight ${!formData.customer ? 'text-amber-500 italic' : 'text-slate-100'}`}>
-                {formData.customer || 'Klient není zadán!'}
-              </h2>
-              <div className="flex items-center gap-2 mt-1.5">
-                <span className={`text-xs font-bold ${!formData.jobName ? 'text-amber-600/70' : 'text-slate-500'}`}>
-                  {formData.jobName || 'Název zakázky chybí...'}
-                </span>
-                {formData.jobId && (
-                  <button
-                    onClick={() => {
-                      navigator.clipboard.writeText(formData.jobId);
-                      alert('ID zkopírováno: ' + formData.jobId);
-                    }}
-                    className="flex items-center gap-1 px-1.5 py-0.5 bg-slate-700/50 hover:bg-purple-500/20 text-slate-400 hover:text-purple-300 rounded text-[10px] font-mono transition-colors border border-slate-700 hover:border-purple-500/30"
-                    title="Kliknutím zkopírujete ID pro Outlook"
-                  >
-                    <Hash className="w-3 h-3" />
-                    {formData.jobId}
-                  </button>
-                )}
-              </div>
-            </div>
+
           </div>
           <div className="flex items-center gap-4">
             <button onClick={handleResetForm} className="flex items-center gap-2.5 px-6 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl text-[10px] font-black border border-red-500/30 active:scale-95 transition-all">
