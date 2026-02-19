@@ -547,7 +547,7 @@ Text poptávky: "${aiText}"`,
     setJobs(prev => {
       const exists = prev.find(j => j.id === data.id);
       if (exists) return prev.map(j => j.id === data.id ? { ...data, isNew: false } : j);
-      return [{ ...data, isNew: false }, ...prev];
+      return [{ ...data, isNew: true }, ...prev];
     });
 
     // 2. Uložení do Firebase (na pozadí)
