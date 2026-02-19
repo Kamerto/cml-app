@@ -21,7 +21,7 @@ const db = getFirestore();
 async function parseEmailWithAI(preview, subject) {
     const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        return { customer: 'Neznámý (Outlook)', jobName: subject, items: [] };
+        return { customer: '', jobName: subject, items: [] };
     }
 
     try {
@@ -49,7 +49,7 @@ JSON formát:
         return JSON.parse(cleanJson);
     } catch (e) {
         console.error('AI selhalo:', e.message);
-        return { customer: 'Neznámý (Outlook)', jobName: subject, items: [] };
+        return { customer: '', jobName: subject, items: [] };
     }
 }
 

@@ -709,7 +709,7 @@ Text: "${itemAiText}"`,
                       </div>
                     </div>
                     <a
-                      href={`outlook:${formData.entry_id}`}
+                      href={`outlook:${formData.entry_id}${formData.store_id ? `?storeid=${formData.store_id}` : ''}`}
                       className="flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black transition-all shadow-xl shadow-blue-900/40 active:scale-95"
                     >
                       OTEVŘÍT V OUTLOOKU
