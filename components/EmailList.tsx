@@ -49,7 +49,13 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
         }
         const url = `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
         console.log('Opening Outlook URL:', url);
-        window.location.href = url;
+        // Vytvoříme skrytý odkaz a klikneme na něj – nejspolehlivější způsob pro nestandardní protokoly
+        const link = document.createElement('a');
+        link.href = url;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => document.body.removeChild(link), 100);
     };
 
     if (loading) {
@@ -115,8 +121,8 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
                             onClick={() => openInOutlook(email)}
                             disabled={!email.entry_id}
                             className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black transition-all shrink-0 active:scale-95 ${email.entry_id
-                                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 cursor-pointer'
-                                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 cursor-pointer'
+                                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
                                 }`}
                             title={email.entry_id
                                 ? `Otevřít v Outlooku${email.store_id ? ' (Store ID uložen)' : ''}`
