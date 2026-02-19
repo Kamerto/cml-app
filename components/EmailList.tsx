@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobEmail } from '../types';
-import { Mail, Loader2, ExternalLink, AlertTriangle, Copy, Check } from 'lucide-react';
+import { Mail, Loader2, AlertTriangle, Copy, Check } from 'lucide-react';
 
 const EMAILS_COLLECTION = 'zakazka_emails';
 
@@ -10,24 +10,39 @@ interface EmailListProps {
     jobId: string;
 }
 
-const CopyButton: React.FC<{ url: string }> = ({ url }) => {
+const CopyButton: React.FC<{ entryId: string; storeId?: string }> = ({ entryId, storeId }) => {
     const [copied, setCopied] = useState(false);
 
     const handleCopy = async () => {
         try {
-            await navigator.clipboard.writeText(url);
+            await navigator.clipboard.writeText(entryId);
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+
+            // Show instructions after copying
+            setTimeout(() => {
+                alert(
+                    '✅ Entry ID zkopírováno!\n\n' +
+                    'JAK OTEVŘÍT EMAIL:\n' +
+                    '1. V Outlooku stiskněte Alt+F8\n' +
+                    '2. Vyberte "OtevritEmailZAplikace"\n' +
+                    '3. Klikněte OK\n' +
+                    '4. Vložte Entry ID (Ctrl+V)\n' +
+                    (storeId ? '5. Vložte Store ID nebo nechte prázdné\n' : '5. Store ID nechte prázdné\n') +
+                    '6. Email se otevře!'
+                );
+            }, 100);
+
+            setTimeout(() => setCopied(false), 3000);
         } catch {
             // fallback
             const el = document.createElement('textarea');
-            el.value = url;
+            el.value = entryId;
             document.body.appendChild(el);
             el.select();
             document.execCommand('copy');
             document.body.removeChild(el);
             setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
+            setTimeout(() => setCopied(false), 3000);
         }
     };
 
@@ -35,11 +50,11 @@ const CopyButton: React.FC<{ url: string }> = ({ url }) => {
         <button
             type="button"
             onClick={handleCopy}
-            className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white active:scale-95"
-            title="Zkopírovat outlook: odkaz (vložte do Edge nebo Win+R)"
+            className="flex items-center gap-1 px-3 py-2.5 rounded-xl text-[10px] font-black transition-all shrink-0 bg-purple-600 hover:bg-purple-500 text-white active:scale-95 shadow-lg"
+            title="Zkopírovat Entry ID pro otevření makrem v Outlooku"
         >
-            {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
-            {copied ? 'OK' : 'KOPÍROVAT'}
+            {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'ZKOPÍROVÁNO' : 'KOPÍROVAT ID'}
         </button>
     );
 };
@@ -75,23 +90,6 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
 
         return () => unsubscribe();
     }, [jobId]);
-
-    const openInOutlook = (email: JobEmail) => {
-        if (!email.entry_id) {
-            alert('Tento e-mail nemá uložené Entry ID – nelze otevřít v Outlooku.');
-            return;
-        }
-        const url = `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
-        const link = document.createElement('a');
-        link.href = url;
-        link.style.display = 'none';
-        document.body.appendChild(link);
-        link.click();
-        setTimeout(() => document.body.removeChild(link), 100);
-    };
-
-    const getOutlookUrl = (email: JobEmail) =>
-        `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
 
     if (loading) {
         return (
@@ -153,29 +151,23 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
                         </div>
                         {email.entry_id ? (
                             <div className="flex flex-col gap-1.5 shrink-0">
-                                <button
-                                    type="button"
-                                    onClick={() => openInOutlook(email)}
-                                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 cursor-pointer active:scale-95"
-                                    title="Otevřít v Outlooku (nemusí fungovat ve všech prohlížečích)"
-                                >
-                                    <ExternalLink className="w-3.5 h-3.5" />
-                                    OUTLOOK
-                                </button>
-                                <CopyButton url={getOutlookUrl(email)} />
+                                <CopyButton entryId={email.entry_id} storeId={email.store_id} />
                             </div>
                         ) : (
                             <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black bg-slate-700 text-slate-500 cursor-not-allowed shrink-0">
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                OUTLOOK
+                                <Copy className="w-3.5 h-3.5" />
+                                CHYBÍ ID
                             </div>
                         )}
                     </div>
                 </div>
             ))}
-            <p className="text-[10px] text-slate-600 pt-1 leading-relaxed">
-                💡 Pokud OUTLOOK tlačítko nefunguje, zkopírujte odkaz a vložte ho do <span className="text-slate-500 font-bold">Edge</span> nebo do dialogu <span className="text-slate-500 font-bold">Win+R</span>.
-            </p>
+            <div className="p-4 bg-purple-900/10 border border-purple-500/20 rounded-xl">
+                <p className="text-[11px] text-purple-300 leading-relaxed">
+                    <strong className="text-purple-400">💡 Jak otevřít email:</strong><br />
+                    Klikněte na <strong>KOPÍROVAT ID</strong> → V Outlooku <strong>Alt+F8</strong> → Spusťte makro <strong>OtevritEmailZAplikace</strong>
+                </p>
+            </div>
         </div>
     );
 };
