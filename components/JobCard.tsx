@@ -93,7 +93,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
         transition-all shadow-xl group select-none flex flex-col border-2 border-white/20
         ${getBgClass()}
         ${job.isFolder ? 'ring-2 ring-amber-400 ring-offset-2 ring-offset-slate-950' : ''}
-        ${job.isNew ? 'animate-pulse ring-4 ring-purple-500 shadow-purple-500/50' : ''}
+        ${job.isNew ? 'animate-pulse ring-4 ring-purple-500 shadow-2xl shadow-purple-500/80 ring-offset-2 ring-offset-slate-950' : ''}
       `}
       style={{
         left: `${job.position.x}px`,
