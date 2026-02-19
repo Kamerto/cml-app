@@ -47,6 +47,7 @@ export interface JobData {
   lastEmailEntryId?: string;
   entry_id?: string;
   store_id?: string;
+  isNew?: boolean;
 }
 
 export interface Column {
