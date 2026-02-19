@@ -17,10 +17,10 @@ if (!getApps().length) {
 const db = getFirestore();
 
 // AI Funkce pro parsování e-mailu
-async function parseEmailWithAI(preview: string, subject: string) {
+async function parseEmailWithAI(preview: string, subject: string, sender: string) {
     const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        return { customer: '', jobName: subject, items: [] };
+        return { customer: sender || '', jobName: subject, items: [] };
     }
 
     try {
@@ -48,7 +48,7 @@ JSON formát:
         return JSON.parse(cleanJson);
     } catch (e: any) {
         console.error('AI selhalo:', e.message);
-        return { customer: '', jobName: subject, items: [] };
+        return { customer: sender || '', jobName: subject, items: [] };
     }
 }
 
@@ -58,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
 
     try {
-        const { zakazka_id, subject, entry_id, store_id, preview } = req.body;
+        const { zakazka_id, subject, entry_id, store_id, preview, sender } = req.body;
 
         if (!subject || !entry_id) {
             return res.status(400).json({ error: 'Missing required fields: subject, entry_id' });
@@ -69,7 +69,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
         if (!targetJobId) {
             console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
-            const aiData = await parseEmailWithAI(preview || '', subject);
+            const aiData = await parseEmailWithAI(preview || '', subject, sender || '');
 
             const newJob = {
                 jobId: `OUT-${Math.floor(Date.now() / 100000)}`,
@@ -112,6 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             entry_id,
             store_id: store_id || '',
             preview: preview || '',
+            sender: sender || '',
             created_at: new Date().toISOString(),
         };
 

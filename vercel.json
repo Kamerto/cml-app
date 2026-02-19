@@ -6,6 +6,6 @@
         }
     ],
     "env": {
-        "DEPLOY_ID": "v2.5.7-DEPLOY-0824"
+        "DEPLOY_ID": "v2.5.8-DEPLOY-0830"
     }
 }

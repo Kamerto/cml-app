@@ -18,10 +18,10 @@ if (!getApps().length) {
 const db = getFirestore();
 
 // AI Funkce pro parsování e-mailu
-async function parseEmailWithAI(preview, subject) {
+async function parseEmailWithAI(preview, subject, sender) {
     const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        return { customer: '', jobName: subject, items: [] };
+        return { customer: sender || '', jobName: subject, items: [] };
     }
 
     try {
@@ -49,7 +49,7 @@ JSON formát:
         return JSON.parse(cleanJson);
     } catch (e) {
         console.error('AI selhalo:', e.message);
-        return { customer: '', jobName: subject, items: [] };
+        return { customer: sender || '', jobName: subject, items: [] };
     }
 }
 
@@ -71,7 +71,7 @@ module.exports = async function handler(req, res) {
         // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
         if (!targetJobId) {
             console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
-            const aiData = await parseEmailWithAI(preview || '', subject);
+            const aiData = await parseEmailWithAI(preview || '', subject, sender);
 
             const newJob = {
                 jobId: `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
