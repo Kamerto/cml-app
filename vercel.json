@@ -6,6 +6,6 @@
         }
     ],
     "env": {
-        "DEPLOY_ID": "v2.6.7-DEPLOY-1706"
+        "DEPLOY_ID": "v2.6.8-DEPLOY-1710"
     }
 }

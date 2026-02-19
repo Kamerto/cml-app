@@ -521,11 +521,17 @@ Text poptávky: "${aiText}"`,
 
   const handleCreateJob = () => {
     const stepX = 200;
-    const stepY = 260;
-    const startX = 60;
-    const startY = 80;
+    const stepY = 210;
+
+    // Umístíme novou zakázku do aktuálně viditelné části workspace
+    const ws = workspaceRef.current;
+    const scrollX = ws ? ws.scrollLeft : 0;
+    const scrollY = ws ? ws.scrollTop : 0;
+    const startX = scrollX + 60;
+    const startY = scrollY + 80;
+
     const cols = Math.max(3, Math.floor((window.innerWidth - 100) / stepX));
-    let pos = { x: 100, y: 100 };
+    let pos = { x: startX, y: startY };
 
     find_pos: for (let row = 0; row < 100; row++) {
       for (let col = 0; col < cols; col++) {
@@ -651,7 +657,7 @@ Text poptávky: "${aiText}"`,
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
             <h1 className="text-xl font-black text-white tracking-tighter uppercase flex items-center gap-2">
               CML BOARD
-              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.6.7</span>
+              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.6.8</span>
             </h1>
           </div>
           <div className="relative">
