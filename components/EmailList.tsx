@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobEmail } from '../types';
-import { Mail, Loader2, ExternalLink } from 'lucide-react';
+import { Mail, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 
 const EMAILS_COLLECTION = 'zakazka_emails';
 
@@ -31,7 +31,6 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
                 id: doc.id,
                 ...doc.data()
             } as JobEmail));
-            // Sort by created_at descending (newest first)
             loaded.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
             setEmails(loaded);
             setLoading(false);
@@ -42,6 +41,16 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
 
         return () => unsubscribe();
     }, [jobId]);
+
+    const openInOutlook = (email: JobEmail) => {
+        if (!email.entry_id) {
+            alert('Tento e-mail nemá uložené Entry ID – nelze otevřít v Outlooku.');
+            return;
+        }
+        const url = `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
+        console.log('Opening Outlook URL:', url);
+        window.location.href = url;
+    };
 
     if (loading) {
         return (
@@ -72,43 +81,54 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
                     E-maily ({emails.length})
                 </span>
             </div>
-            {emails.map(email => {
-                const outlookHref = `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
-                return (
-                    <div
-                        key={email.id}
-                        className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 hover:bg-slate-800/70 transition-all group"
-                    >
-                        <div className="flex items-start justify-between gap-4">
-                            <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2 mb-1">
-                                    <Mail className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                                    <h4 className="text-sm font-bold text-slate-200 truncate">{email.subject || '(bez předmětu)'}</h4>
-                                </div>
-                                {email.sender && (
-                                    <p className="text-[11px] text-slate-400 font-medium mb-1">Od: {email.sender}</p>
-                                )}
-                                {email.preview && (
-                                    <p className="text-xs text-slate-500 line-clamp-2 italic border-l-2 border-slate-700 pl-3">
-                                        {email.preview}
-                                    </p>
-                                )}
-                                {email.received_at && (
-                                    <p className="text-[10px] text-slate-600 mt-1 font-mono">{email.received_at}</p>
-                                )}
+            {emails.map(email => (
+                <div
+                    key={email.id}
+                    className="bg-slate-800/40 border border-slate-700/50 rounded-2xl p-4 hover:bg-slate-800/70 transition-all"
+                >
+                    <div className="flex items-start justify-between gap-4">
+                        <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                                <Mail className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                <h4 className="text-sm font-bold text-slate-200 truncate">{email.subject || '(bez předmětu)'}</h4>
                             </div>
-                            <a
-                                href={outlookHref}
-                                className="flex items-center gap-1.5 px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[10px] font-black transition-all shrink-0 shadow-lg shadow-blue-900/30 active:scale-95"
-                                title={`Otevřít v Outlooku${email.store_id ? ` (Store: ${email.store_id.substring(0, 8)}...)` : ''}`}
-                            >
-                                <ExternalLink className="w-3.5 h-3.5" />
-                                OUTLOOK
-                            </a>
+                            {email.sender && (
+                                <p className="text-[11px] text-slate-400 font-medium mb-1">Od: {email.sender}</p>
+                            )}
+                            {email.preview && (
+                                <p className="text-xs text-slate-500 line-clamp-2 italic border-l-2 border-slate-700 pl-3">
+                                    {email.preview}
+                                </p>
+                            )}
+                            {email.received_at && (
+                                <p className="text-[10px] text-slate-600 mt-1 font-mono">{email.received_at}</p>
+                            )}
+                            {!email.entry_id && (
+                                <div className="flex items-center gap-1 mt-1 text-[10px] text-amber-500">
+                                    <AlertTriangle className="w-3 h-3" />
+                                    <span>Chybí Entry ID – nelze otevřít v Outlooku</span>
+                                </div>
+                            )}
                         </div>
+                        <button
+                            type="button"
+                            onClick={() => openInOutlook(email)}
+                            disabled={!email.entry_id}
+                            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black transition-all shrink-0 active:scale-95 ${email.entry_id
+                                    ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 cursor-pointer'
+                                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+                                }`}
+                            title={email.entry_id
+                                ? `Otevřít v Outlooku${email.store_id ? ' (Store ID uložen)' : ''}`
+                                : 'Entry ID chybí v databázi'
+                            }
+                        >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            OUTLOOK
+                        </button>
                     </div>
-                );
-            })}
+                </div>
+            ))}
         </div>
     );
 };
