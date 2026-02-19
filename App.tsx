@@ -528,7 +528,6 @@ Text poptávky: "${aiText}"`,
       jobId: tempId, customer: '', jobName: '', address: '',
       dateReceived: new Date().toISOString().split('T')[0], deadline: '',
       technology: [], status: JobStatus.INQUIRY, position: pos,
-      isNew: true,
       items: [{ id: Math.random().toString(36).substring(2, 11), description: '', quantity: 0, size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0 }],
       bindingType: '', laminationType: '', processing: '', cooperation: '', shippingNotes: '', generalNotes: '', icon: 'FileText'
     };
@@ -546,9 +545,8 @@ Text poptávky: "${aiText}"`,
     // 1. Lokální update (optimistický)
     setJobs(prev => {
       const exists = prev.find(j => j.id === data.id);
-      const updatedData = { ...data, isNew: exists ? false : data.isNew };
-      if (exists) return prev.map(j => j.id === data.id ? updatedData : j);
-      return [updatedData, ...prev];
+      if (exists) return prev.map(j => j.id === data.id ? { ...data, isNew: false } : j);
+      return [{ ...data, isNew: false }, ...prev];
     });
 
     // 2. Uložení do Firebase (na pozadí)
@@ -635,7 +633,7 @@ Text poptávky: "${aiText}"`,
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
             <h1 className="text-xl font-black text-white tracking-tighter uppercase flex items-center gap-2">
               CML BOARD
-              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.6.9</span>
+              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.7.0</span>
             </h1>
           </div>
           <div className="relative">
