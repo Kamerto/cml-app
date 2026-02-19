@@ -2,13 +2,47 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobEmail } from '../types';
-import { Mail, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
+import { Mail, Loader2, ExternalLink, AlertTriangle, Copy, Check } from 'lucide-react';
 
 const EMAILS_COLLECTION = 'zakazka_emails';
 
 interface EmailListProps {
     jobId: string;
 }
+
+const CopyButton: React.FC<{ url: string }> = ({ url }) => {
+    const [copied, setCopied] = useState(false);
+
+    const handleCopy = async () => {
+        try {
+            await navigator.clipboard.writeText(url);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        } catch {
+            // fallback
+            const el = document.createElement('textarea');
+            el.value = url;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    return (
+        <button
+            type="button"
+            onClick={handleCopy}
+            className="flex items-center gap-1 px-2.5 py-2 rounded-xl text-[10px] font-black transition-all shrink-0 bg-slate-700 hover:bg-slate-600 text-slate-300 hover:text-white active:scale-95"
+            title="Zkopírovat outlook: odkaz (vložte do Edge nebo Win+R)"
+        >
+            {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? 'OK' : 'KOPÍROVAT'}
+        </button>
+    );
+};
 
 const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
     const [emails, setEmails] = useState<JobEmail[]>([]);
@@ -48,8 +82,6 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
             return;
         }
         const url = `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
-        console.log('Opening Outlook URL:', url);
-        // Vytvoříme skrytý odkaz a klikneme na něj – nejspolehlivější způsob pro nestandardní protokoly
         const link = document.createElement('a');
         link.href = url;
         link.style.display = 'none';
@@ -57,6 +89,9 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
         link.click();
         setTimeout(() => document.body.removeChild(link), 100);
     };
+
+    const getOutlookUrl = (email: JobEmail) =>
+        `outlook:${email.entry_id}${email.store_id ? `?storeid=${email.store_id}` : ''}`;
 
     if (loading) {
         return (
@@ -116,25 +151,31 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
                                 </div>
                             )}
                         </div>
-                        <button
-                            type="button"
-                            onClick={() => openInOutlook(email)}
-                            disabled={!email.entry_id}
-                            className={`flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black transition-all shrink-0 active:scale-95 ${email.entry_id
-                                ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 cursor-pointer'
-                                : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                                }`}
-                            title={email.entry_id
-                                ? `Otevřít v Outlooku${email.store_id ? ' (Store ID uložen)' : ''}`
-                                : 'Entry ID chybí v databázi'
-                            }
-                        >
-                            <ExternalLink className="w-3.5 h-3.5" />
-                            OUTLOOK
-                        </button>
+                        {email.entry_id ? (
+                            <div className="flex flex-col gap-1.5 shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => openInOutlook(email)}
+                                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black transition-all bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/30 cursor-pointer active:scale-95"
+                                    title="Otevřít v Outlooku (nemusí fungovat ve všech prohlížečích)"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    OUTLOOK
+                                </button>
+                                <CopyButton url={getOutlookUrl(email)} />
+                            </div>
+                        ) : (
+                            <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black bg-slate-700 text-slate-500 cursor-not-allowed shrink-0">
+                                <ExternalLink className="w-3.5 h-3.5" />
+                                OUTLOOK
+                            </div>
+                        )}
                     </div>
                 </div>
             ))}
+            <p className="text-[10px] text-slate-600 pt-1 leading-relaxed">
+                💡 Pokud OUTLOOK tlačítko nefunguje, zkopírujte odkaz a vložte ho do <span className="text-slate-500 font-bold">Edge</span> nebo do dialogu <span className="text-slate-500 font-bold">Win+R</span>.
+            </p>
         </div>
     );
 };
