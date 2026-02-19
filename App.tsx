@@ -14,6 +14,8 @@ import { GoogleGenAI, Type } from '@google/genai';
 import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth, db, PUBLIC_ORDERS_COLLECTION } from './firebase';
+
+const EMAILS_COLLECTION = 'zakazka_emails';
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
@@ -96,6 +98,24 @@ const App: React.FC = () => {
       console.log('Zakázka smazána z Firebase:', orderId);
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
+    }
+  };
+
+  // Aktualizuje zakazka_id v emailech když se TEMP ID změní na reálné
+  const updateEmailsJobId = async (oldJobId: string, newJobId: string) => {
+    if (!oldJobId || !newJobId || oldJobId === newJobId) return;
+    if (!oldJobId.startsWith('TEMP-')) return;
+    try {
+      const { getDocs: _getDocs, updateDoc: _updateDoc, query: _query, collection: _collection, where: _where } = await import('firebase/firestore');
+      const q = _query(_collection(db, EMAILS_COLLECTION), _where('zakazka_id', '==', oldJobId));
+      const snapshot = await _getDocs(q);
+      const updates = snapshot.docs.map(doc => _updateDoc(doc.ref, { zakazka_id: newJobId }));
+      await Promise.all(updates);
+      if (updates.length > 0) {
+        console.log(`✉️ Přepojena ${updates.length} e-mailů: ${oldJobId} → ${newJobId}`);
+      }
+    } catch (e) {
+      console.error('Chyba při přepojování e-mailů:', e);
     }
   };
 
@@ -518,9 +538,10 @@ Text poptávky: "${aiText}"`,
       }
     }
 
+    const tempId = `TEMP-${Date.now()}`;
     const newJob: JobData = {
       id: Math.random().toString(36).substring(2, 11),
-      jobId: '', customer: '', jobName: '', address: '',
+      jobId: tempId, customer: '', jobName: '', address: '',
       dateReceived: new Date().toISOString().split('T')[0], deadline: '',
       technology: [], status: JobStatus.INQUIRY, position: pos,
       items: [{ id: Math.random().toString(36).substring(2, 11), description: '', quantity: 0, size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0 }],
@@ -531,6 +552,12 @@ Text poptávky: "${aiText}"`,
   };
 
   const handleSaveJob = (data: JobData) => {
+    // Pokud se mění z TEMP ID na reálné, přepojujeme emaily
+    const previousJob = jobs.find(j => j.id === data.id);
+    if (previousJob && previousJob.jobId !== data.jobId && previousJob.jobId.startsWith('TEMP-')) {
+      updateEmailsJobId(previousJob.jobId, data.jobId);
+    }
+
     // 1. Lokální update (optimistický)
     setJobs(prev => {
       const exists = prev.find(j => j.id === data.id);
@@ -622,7 +649,7 @@ Text poptávky: "${aiText}"`,
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
             <h1 className="text-xl font-black text-white tracking-tighter uppercase flex items-center gap-2">
               CML BOARD
-              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse shadow-lg shadow-purple-900/50">v2.6.0</span>
+              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full animate-pulse shadow-lg shadow-purple-900/50">v2.6.1</span>
             </h1>
           </div>
           <div className="relative">
