@@ -528,6 +528,7 @@ Text poptávky: "${aiText}"`,
       jobId: tempId, customer: '', jobName: '', address: '',
       dateReceived: new Date().toISOString().split('T')[0], deadline: '',
       technology: [], status: JobStatus.INQUIRY, position: pos,
+      isNew: true,
       items: [{ id: Math.random().toString(36).substring(2, 11), description: '', quantity: 0, size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0 }],
       bindingType: '', laminationType: '', processing: '', cooperation: '', shippingNotes: '', generalNotes: '', icon: 'FileText'
     };

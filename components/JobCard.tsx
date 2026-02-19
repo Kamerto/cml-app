@@ -97,6 +97,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
       style={{
         left: `${job.position.x}px`,
         top: `${job.position.y}px`,
+        zIndex: job.isNew ? 9999 : undefined,
         ...getStyle()
       }}
     >
