@@ -4,7 +4,7 @@ import {
   Plus, Search, Sparkles,
   Settings, Bot, X, Printer, Trash2,
   Loader2, MapPin, Zap, Navigation,
-  Layers, Maximize, Minimize, FolderSync, LogOut
+  Layers, Maximize, Minimize, FolderSync, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste
 } from 'lucide-react';
 import { JobData, JobStatus, PrintItem } from './types';
 import { INITIAL_JOBS } from './constants';
@@ -140,6 +140,33 @@ const App: React.FC = () => {
     }
   };
 
+  const migrateOldJobs = async () => {
+    if (!confirm('Tato akce zkopíruje stávající platné zakázky z původní fronty na Vaši novou Tabuli. Poškozené zakázky (otazníky) budou vynechány. Pokračovat?')) return;
+    try {
+      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION));
+      const snaps = await getDocs(q);
+      let count = 0;
+
+      for (const d of snaps.docs) {
+        const data = d.data() as JobData;
+        const id = (data.jobId || '').toLowerCase().trim();
+        // Pouze platné zakázky
+        if (id && id !== '???' && id !== 'id?' && id !== 'null' && id !== 'undefined') {
+          // Zkontrolujeme jestli už na tabuli není
+          const checkQ = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', data.jobId));
+          const checkS = await getDocs(checkQ);
+          if (checkS.empty) {
+            await addDoc(collection(db, BOARD_CARDS_COLLECTION), { ...data, lastUpdated: serverTimestamp() });
+            count++;
+          }
+        }
+      }
+      alert(`Hotovo! Přeneseno ${count} platných zakázek na Tabuli.`);
+    } catch (e) {
+      console.error('Chyba při migraci:', e);
+      alert('Chyba při migraci dat.');
+    }
+  };
 
   const bringToFront = async (id: string) => {
     setJobs(prev => {
@@ -818,16 +845,25 @@ Text poptávky: "${aiText}"`,
               </div>
             </div>
 
-            <div className="pt-6 border-t border-slate-800">
-              <h4 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Servisní nástroje</h4>
+            <div className="pt-6 border-t border-slate-800 space-y-3">
+              <h4 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Servisní nástroje (Nová verze)</h4>
+
+              <button
+                onClick={migrateOldJobs}
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-purple-600/10 hover:bg-purple-600 text-purple-500 hover:text-white rounded-2xl text-[11px] font-black border border-purple-500/30 transition-all uppercase tracking-wider"
+              >
+                <ClipboardList className="w-4 h-4" /> PŘENÉST PLATNÉ ZAKÁZKY ZE STARÉ FRONTY
+              </button>
+
               <button
                 onClick={cleanupGhostJobs}
                 className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl text-[11px] font-black border border-red-500/30 transition-all uppercase tracking-wider"
               >
-                <Trash2 className="w-4 h-4" /> SMAZAT '???' ZAKÁZKY
+                <Trash2 className="w-4 h-4" /> SMAZAT POŠKOZENÉ ZAKÁZKY Z TABULE
               </button>
+
               <p className="mt-3 text-[9px] text-slate-600 text-center italic">
-                Vymaže z databáze pouze záznamy s ID "???". Ostré zakázky zůstanou.
+                Údržba nové soukromé databáze Tabule.
               </p>
             </div>
           </div>
