@@ -21,7 +21,8 @@ export interface PrintItem {
 }
 
 export interface JobData {
-  fireId?: string; // Interní Firestore ID pro bezpečné mazání
+  fireId?: string; // ID v soukromé kolekci (Tabule)
+  publicFireId?: string; // ID ve společné kolekci (Fronta/orders)
   id: string;
   jobId: string;
   customer: string;

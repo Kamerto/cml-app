@@ -11,7 +11,7 @@ import { INITIAL_JOBS } from './constants';
 import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
 import { GoogleGenAI, Type } from '@google/genai';
-import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
+import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc, doc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth, db, PUBLIC_ORDERS_COLLECTION, BOARD_CARDS_COLLECTION } from './firebase';
 
@@ -19,7 +19,7 @@ const EMAILS_COLLECTION = 'zakazka_emails';
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.7.12-SPLIT';
+  const VERSION = 'v2.7.13-UNIFIED';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -60,36 +60,41 @@ const App: React.FC = () => {
 
   // --- FIREBASE HELPER FUNKCE --- 
 
-  // Uložení/Aktualizace zakázky ve Firebase
   const saveToFirebase = async (job: JobData) => {
     if (!job.jobId) return;
     try {
-      // 1. VŽDY ulož do soukromé kolekce BOARD (BOARD_CARDS_COLLECTION)
-      const boardQuery = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', job.jobId));
-      const boardSnap = await getDocs(boardQuery);
-
-      if (!boardSnap.empty) {
-        await updateDoc(boardSnap.docs[0].ref, { ...job, lastUpdated: serverTimestamp() });
-        console.log('Firebase BOARD UPDATE:', job.jobId);
+      // 1. AKTUALIZACE SOUKROMÉ TABULE (BOARD_CARDS_COLLECTION)
+      let currentFireId = job.fireId;
+      if (currentFireId) {
+        // Máme ID, updatujeme přímo
+        await updateDoc(doc(db, BOARD_CARDS_COLLECTION, currentFireId), { ...job, lastUpdated: serverTimestamp() });
+        console.log('Firebase BOARD UPDATE (Direct):', job.jobId);
       } else {
-        await addDoc(collection(db, BOARD_CARDS_COLLECTION), { ...job, created_at: serverTimestamp() });
-        console.log('Firebase BOARD CREATE:', job.jobId);
+        // Nemáme ID, musíme najít nebo vytvořit
+        const boardQuery = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', job.jobId));
+        const boardSnap = await getDocs(boardQuery);
+        if (!boardSnap.empty) {
+          currentFireId = boardSnap.docs[0].id;
+          await updateDoc(boardSnap.docs[0].ref, { ...job, lastUpdated: serverTimestamp() });
+          console.log('Firebase BOARD UPDATE (Query):', job.jobId);
+        } else {
+          const newDoc = await addDoc(collection(db, BOARD_CARDS_COLLECTION), { ...job, created_at: serverTimestamp() });
+          currentFireId = newDoc.id;
+          console.log('Firebase BOARD CREATE:', job.jobId);
+        }
       }
 
-      // 2. Pokud je isTracked: true, ulož/aktualizuj i ve společné kolekci (PUBLIC_ORDERS_COLLECTION / orders)
-      if (job.isTracked) {
-        const publicQuery = query(collection(db, PUBLIC_ORDERS_COLLECTION), where('jobId', '==', job.jobId));
-        const publicSnap = await getDocs(publicQuery);
-
-        if (!publicSnap.empty) {
-          // Update existující ve společné frontě
-          await updateDoc(publicSnap.docs[0].ref, { ...job, lastUpdated: serverTimestamp() });
-          console.log('Firebase PUBLIC UPDATE:', job.jobId);
-        } else {
-          // Přidání do společné fronty (Zakázka na cestě)
-          await addDoc(collection(db, PUBLIC_ORDERS_COLLECTION), { ...job, created_at: serverTimestamp() });
-          console.log('Firebase PUBLIC CREATE (Added to Queue):', job.jobId);
-        }
+      // 2. AKTUALIZACE SPOLEČNÉ FRONTY (PUBLIC_ORDERS_COLLECTION / orders)
+      // UNIFIED ID STRATEGY: Použijeme stejné ID dokumentu jako v Tabuli
+      if (job.isTracked && currentFireId) {
+        // Použijeme setDoc místo addDoc, aby ID bylo stejné jako na Tabuli
+        const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, currentFireId);
+        await setDoc(publicDocRef, {
+          ...job,
+          fireId: currentFireId, // Zde to slouží jako odkaz zpět k tabuli
+          lastUpdated: serverTimestamp()
+        });
+        console.log('Firebase PUBLIC SYNC (Unified ID):', job.jobId);
       }
     } catch (e) {
       console.error('Chyba při ukládání do Firebase:', e);
@@ -102,38 +107,44 @@ const App: React.FC = () => {
       // 1. Smazat z BOARD kolekce
       if (fireId) {
         await deleteDoc(doc(db, BOARD_CARDS_COLLECTION, fireId));
-        console.log('Smazáno z BOARD (Doc ID):', fireId);
+        // S Unified ID strategií zkusíme smazat i z PUBLIC se stejným ID
+        await deleteDoc(doc(db, PUBLIC_ORDERS_COLLECTION, fireId));
+        console.log('Smazáno z obou kolekcí (Unified Doc ID):', fireId);
       } else {
+        // Fallback pro staré verze
         const qb = query(collection(db, BOARD_CARDS_COLLECTION), where("jobId", "==", orderId || jobId));
         const sb = await getDocs(qb);
         sb.forEach(d => deleteDoc(d.ref));
-      }
 
-      // 2. Smazat z PUBLIC (orders) kolekce - zkusíme najít a smazat
-      const qp = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", orderId || jobId));
-      const sp = await getDocs(qp);
-      sp.forEach(d => {
-        deleteDoc(d.ref);
-        console.log('Smazáno z PUBLIC fronty:', orderId);
-      });
+        const qp = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", orderId || jobId));
+        const sp = await getDocs(qp);
+        sp.forEach(d => deleteDoc(d.ref));
+      }
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
     }
   };
 
   const cleanupGhostJobs = async () => {
-    if (!confirm('Tato akce vymaže z databáze (z Vaší tabule) všechny zakázky s poškozeným ID. Chcete pokračovat?')) return;
+    if (!confirm('Tato akce vymaže všechny poškozené zakázky (otazníky, null, prázdné) z TABULE i z FRONTY. Pokračovat?')) return;
     try {
-      const q1 = query(collection(db, BOARD_CARDS_COLLECTION), where("jobId", "==", "???"));
-      const q2 = query(collection(db, BOARD_CARDS_COLLECTION), where("jobId", "==", ""));
-      const q3 = query(collection(db, BOARD_CARDS_COLLECTION), where("jobId", "==", "null"));
-      const q4 = query(collection(db, BOARD_CARDS_COLLECTION), where("jobId", "==", "ID?"));
+      const collections = [BOARD_CARDS_COLLECTION, PUBLIC_ORDERS_COLLECTION];
+      let total = 0;
 
-      const snaps = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4)]);
-      const deletePromises = snaps.flatMap(s => s.docs.map(doc => deleteDoc(doc.ref)));
-      await Promise.all(deletePromises);
+      for (const collName of collections) {
+        const q1 = query(collection(db, collName), where("jobId", "==", "???"));
+        const q2 = query(collection(db, collName), where("jobId", "==", ""));
+        const q3 = query(collection(db, collName), where("jobId", "==", "null"));
+        const q4 = query(collection(db, collName), where("jobId", "==", "ID?"));
+        const q5 = query(collection(db, collName), where("jobId", "==", "undefined"));
 
-      alert(`Smazáno ${deletePromises.length} poškozených zakázek z vaší Tabule.`);
+        const snaps = await Promise.all([getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4), getDocs(q5)]);
+        const deletePromises = snaps.flatMap(s => s.docs.map(doc => deleteDoc(doc.ref)));
+        await Promise.all(deletePromises);
+        total += deletePromises.length;
+      }
+
+      alert(`Hotovo! Smazáno celkem ${total} poškozených záznamů.`);
     } catch (e) {
       console.error('Chyba při čištění:', e);
       alert('Chyba při čištění databáze.');
@@ -141,7 +152,7 @@ const App: React.FC = () => {
   };
 
   const migrateOldJobs = async () => {
-    if (!confirm('Tato akce zkopíruje stávající platné zakázky z původní fronty na Vaši novou Tabuli. Poškozené zakázky (otazníky) budou vynechány. Pokračovat?')) return;
+    if (!confirm('Tato akce PŘEMÍSTÍ platné zakázky z původní fronty na Vaši novou Tabuli. Poškozené zakázky budou vymazány. Pokračovat?')) return;
     try {
       const q = query(collection(db, PUBLIC_ORDERS_COLLECTION));
       const snaps = await getDocs(q);
@@ -150,21 +161,24 @@ const App: React.FC = () => {
       for (const d of snaps.docs) {
         const data = d.data() as JobData;
         const id = (data.jobId || '').toLowerCase().trim();
-        // Pouze platné zakázky
-        if (id && id !== '???' && id !== 'id?' && id !== 'null' && id !== 'undefined') {
-          // Zkontrolujeme jestli už na tabuli není
-          const checkQ = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', data.jobId));
-          const checkS = await getDocs(checkQ);
-          if (checkS.empty) {
-            await addDoc(collection(db, BOARD_CARDS_COLLECTION), { ...data, lastUpdated: serverTimestamp() });
-            count++;
-          }
+
+        if (id && id !== '???' && id !== 'id?' && id !== 'null' && id !== 'undefined' && id !== 'nan') {
+          // PŘEMÍSTĚNÍ: Použijeme STEJNÉ ID dokumentu pro Tabuli
+          await setDoc(doc(db, BOARD_CARDS_COLLECTION, d.id), {
+            ...data,
+            fireId: d.id,
+            lastUpdated: serverTimestamp()
+          });
+          count++;
+        } else {
+          // Smazání poškozených ze staré fronty (orders)
+          await deleteDoc(d.ref);
         }
       }
-      alert(`Hotovo! Přeneseno ${count} platných zakázek na Tabuli.`);
+      alert(`Hotovo! Přeneseno ${count} platných zakázek. Poškozené byly odstraněny.`);
     } catch (e) {
       console.error('Chyba při migraci:', e);
-      alert('Chyba při migraci dat.');
+      alert('Chyba při migraci/čištění dat.');
     }
   };
 
@@ -225,10 +239,11 @@ const App: React.FC = () => {
         changes.forEach(change => {
           const data = change.doc.data() as JobData;
           // Ignorujeme, pokud data nejsou validní JobData (např. chybí jobId nebo je to ghost ID)
-          if (!data.jobId || data.jobId === '???' || data.jobId === 'ID?') return;
+          const checkId = (data.jobId || '').toLowerCase().trim();
+          if (!checkId || checkId === '???' || checkId === 'id?' || checkId === 'null' || checkId === 'undefined' || checkId === 'nan') return;
 
-          // Hledáme, zda už zakázku máme (podle jobId)
-          const index = newJobs.findIndex(j => j.jobId === data.jobId);
+          // Hledáme, zda už zakázku máme (podle interního Firestore ID)
+          const index = newJobs.findIndex(j => j.fireId === change.doc.id);
 
           if (change.type === 'added') {
             if (index === -1) {
