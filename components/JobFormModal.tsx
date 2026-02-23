@@ -191,6 +191,7 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     processing: job.processing || '',
     cooperation: job.cooperation || '',
     shippingNotes: job.shippingNotes || '',
+    outlookId: job.outlookId || '',
     items: (job.items || []).map(item => ({
       ...item,
       description: item.description || '',
@@ -496,8 +497,11 @@ Text: "${itemAiText}"`,
     const jsonStr = JSON.stringify(pytlikData);
     const encodedData = btoa(unescape(encodeURIComponent(jsonStr)));
 
-    const pytlikUrl = `https://el-pytlik.vercel.app/?jobData=${encodedData}`;
+    // Povýšíme zakázku do sledovacího systému (Tracked)
+    const updatedData = { ...formData, isTracked: true };
+    onSave(updatedData);
 
+    const pytlikUrl = `https://el-pytlik.vercel.app/?jobData=${encodedData}`;
     window.open(pytlikUrl, '_blank');
   };
 
@@ -530,13 +534,14 @@ Text: "${itemAiText}"`,
         cooperation: '',
         shippingNotes: '',
         generalNotes: '',
+        outlookId: '',
         tags: []
       });
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[3000] flex items-center justify-center p-4 print:p-0 print:bg-white print:block">
+    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[2147483647] flex items-center justify-center p-4 print:p-0 print:bg-white print:block">
       <div className="bg-slate-900 border border-slate-800 w-full max-w-5xl h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200 print:hidden">
         <header className="bg-slate-800 border-b border-slate-700 px-8 py-5 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-5">
@@ -601,42 +606,44 @@ Text: "${itemAiText}"`,
             {activeTab === 'details' ? (
               <div className="max-w-3xl space-y-8 animate-in fade-in slide-in-from-left-4">
 
-                {/* ID ZAKÁZKY - PŘESUNUTO SEM PRO VIDITELNOST */}
-                <div className="p-5 bg-slate-800/50 border border-slate-700/50 rounded-2xl flex items-center justify-between gap-4">
-                  <div className="flex-1">
-                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-1.5 flex items-center gap-2 tracking-widest">
-                      <Hash className={`w-3.5 h-3.5 text-purple-400`} /> Číslo zakázky (ID) - pro Outlook
+                <div className="space-y-4 p-7 bg-slate-800/30 border border-slate-700/50 rounded-3xl">
+                  <div className="flex justify-between items-center">
+                    <label className="block text-xs font-black text-slate-600 uppercase flex items-center gap-2 tracking-widest">
+                      <Hash className={`w-4 h-4 transition-all duration-300 ${getIconStyle(formData.jobId)}`} /> Číslo zakázky (ID)
                     </label>
                     <div className="flex items-center gap-2">
-                      <input
-                        type="text"
-                        readOnly
-                        className="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2 text-sm font-mono font-bold text-slate-300 focus:ring-0 cursor-copy"
-                        value={formData.jobId || 'Bude vygenerováno po uložení...'}
-                        onClick={(e) => {
-                          if (formData.jobId) {
-                            navigator.clipboard.writeText(formData.jobId);
-                            (e.target as HTMLInputElement).select();
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const val = formData.jobId || formData.outlookId;
+                          if (val) {
+                            navigator.clipboard.writeText(val);
+                            alert('Zkopírováno: ' + val);
+                          } else {
+                            alert('Není co kopírovat.');
                           }
                         }}
-                        placeholder="OUT-XXXX..."
-                      />
-                      {formData.jobId && (
-                        <button
-                          onClick={() => {
-                            navigator.clipboard.writeText(formData.jobId);
-                            alert('Zkopírováno!');
-                          }}
-                          className="px-4 py-2 bg-purple-600/20 hover:bg-purple-600 text-purple-400 hover:text-white rounded-xl text-xs font-black transition-all border border-purple-500/30"
-                        >
-                          KOPIROVAT
-                        </button>
-                      )}
+                        className={`text-[10px] font-black px-3 py-1.5 rounded-lg border transition-all ${(formData.jobId || formData.outlookId)
+                          ? 'bg-purple-600/20 border-purple-500/30 text-purple-400 hover:bg-purple-600 hover:text-white'
+                          : 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
+                          }`}
+                      >
+                        KOPÍROVAT ID
+                      </button>
                     </div>
-                    <p className="text-[10px] text-slate-500 mt-1.5 ml-1">
-                      Toto ID zadejte do Outlook makra pro přiřazení e-mailu.
-                    </p>
                   </div>
+                  <input
+                    type="text"
+                    className={`w-full border rounded-2xl px-7 py-5 text-2xl font-black focus:ring-4 focus:ring-purple-500/20 outline-none transition-all ${getFieldStyle(formData.jobId)}`}
+                    value={formData.jobId || ''}
+                    onChange={(e) => setFormData({ ...formData, jobId: e.target.value })}
+                    placeholder="VYPLŇTE ČÍSLO ZAKÁZKY..."
+                  />
+                  {!formData.jobId && formData.outlookId && (
+                    <p className="text-[10px] text-slate-600 font-bold ml-1">
+                      💡 Pro Outlook můžete použít: <span className="font-mono text-slate-500">{formData.outlookId}</span>
+                    </p>
+                  )}
                 </div>
 
                 <div>
@@ -677,9 +684,9 @@ Text: "${itemAiText}"`,
                 </div>
 
                 {/* Email List - zobrazí všechny e-maily přiřazené k této zakázce */}
-                {formData.jobId && !formData.jobId.startsWith('TEMP-') && (
+                {(formData.outlookId || (formData.jobId && !formData.jobId.startsWith('TEMP-'))) && (
                   <div className="mt-6">
-                    <EmailList jobId={formData.jobId} />
+                    <EmailList jobId={formData.outlookId || formData.jobId} />
                   </div>
                 )}
 
@@ -1288,14 +1295,15 @@ Text: "${itemAiText}"`,
               <div className="flex gap-4">
                 <button
                   onClick={() => {
-                    // Uložíme lokálně do parenta Tabule, aby změny zůstaly v systému
-                    onSave(formData);
+                    // Povýšíme do sledovacího systému a uložíme
+                    const updatedData = { ...formData, isTracked: true };
+                    onSave(updatedData);
                     setShowPrintEdit(false);
                     setTimeout(() => window.print(), 100);
                   }}
                   className="flex items-center gap-3 px-8 py-4 bg-slate-100 hover:bg-white text-slate-900 rounded-2xl text-sm font-black shadow-xl active:scale-95 transition-all"
                 >
-                  <Save className="w-5 h-5 opacity-40 text-purple-600" /> ULOŽIT DO TABULE & TISKNOUT
+                  <Save className="w-5 h-5 opacity-40 text-purple-600" /> FRONTA A TISK
                 </button>
 
                 <button

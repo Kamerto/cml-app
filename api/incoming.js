@@ -65,16 +65,23 @@ module.exports = async function handler(req, res) {
             return res.status(400).json({ error: 'Missing required fields: subject, entry_id' });
         }
 
-        let targetJobId = zakazka_id || '';
-        const customerName = targetJobId ? `Zakázka ${targetJobId}` : 'ZÁKAZNÍK Z EMAILU';
+        let targetOutlookId = zakazka_id || '';
+        let targetJobId = ''; // Bude vyplněno až ručně
 
-        // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
-        if (!targetJobId) {
+        // Pokud nemáme ID zakázky z webhooku (zakazka_id v body), zkusíme najít existující zakázku podle outlookId nebo jobId
+        // Ale webhook obvykle posílá zakazka_id pokud je to k existující.
+        // Pokud je zakazka_id prázdné, tvoříme novou.
+
+        // Pokud chybí ID, zkusíme ji vytvořit přes AI
+        if (!targetOutlookId) {
             console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
             const aiData = await parseEmailWithAI(preview || '', subject, sender);
 
+            const generatedOutlookId = `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
+
             const newJob = {
-                jobId: `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`,
+                jobId: '', // Necháme prázdné pro ruční vyplnění
+                outlookId: generatedOutlookId,
                 customer: aiData.customer,
                 jobName: aiData.jobName,
                 status: 'Poptávka',
@@ -89,30 +96,44 @@ module.exports = async function handler(req, res) {
                     x: 100 + Math.floor(Math.random() * 400),
                     y: 100 + Math.floor(Math.random() * 400)
                 },
-                isTracked: true,
+                isTracked: false, // NOVÉ: Nezobrazovat hned ve frontě na cestě
                 entry_id: entry_id,
                 store_id: store_id || '',
+                zIndex: Date.now() % 1000000000, // Capped for CSS safety (max ~2.1B)
                 created_at: FieldValue.serverTimestamp()
             };
 
             await db.collection('orders').add(newJob);
-            targetJobId = newJob.jobId;
-            console.log('✅ Vytvořena nová karta:', targetJobId);
+            targetOutlookId = generatedOutlookId;
+            console.log('✅ Vytvořena nová karta s Outlook ID:', targetOutlookId);
         } else {
-            // Pokud ID máme, ověříme existenci
+            // Pokud ID máme, ověříme existenci zakázky (hledáme v outlookId nebo jobId)
             const ordersSnapshot = await db.collection('orders')
-                .where('jobId', '==', targetJobId)
+                .where('outlookId', '==', targetOutlookId)
                 .limit(1)
                 .get();
 
-            if (ordersSnapshot.empty) {
-                return res.status(404).json({ error: `Job with ID ${targetJobId} not found` });
+            let orderDoc = ordersSnapshot.empty ? null : ordersSnapshot.docs[0];
+
+            if (!orderDoc) {
+                // Zkusíme ještě starý způsob přes jobId (kvůli zpětné kompatibilitě)
+                const oldOrdersSnapshot = await db.collection('orders')
+                    .where('jobId', '==', targetOutlookId)
+                    .limit(1)
+                    .get();
+                if (!oldOrdersSnapshot.empty) {
+                    orderDoc = oldOrdersSnapshot.docs[0];
+                }
+            }
+
+            if (!orderDoc) {
+                return res.status(404).json({ error: `Job with ID ${targetOutlookId} not found` });
             }
         }
 
         // Uložení e-mailu
         const emailData = {
-            zakazka_id: targetJobId,
+            zakazka_id: targetOutlookId,
             subject,
             entry_id,
             store_id: store_id || '',
@@ -127,9 +148,17 @@ module.exports = async function handler(req, res) {
         // Aktualizace zakázky o ID posledního e-mailu pro rychlý přístup z karty
         try {
             const ordersRef = db.collection('orders');
-            const orderSnap = await ordersRef.where('jobId', '==', targetJobId).limit(1).get();
-            if (!orderSnap.empty) {
-                await orderSnap.docs[0].ref.update({
+            // Hledáme v outlookId nebo jobId
+            const orderSnap = await ordersRef.where('outlookId', '==', targetOutlookId).limit(1).get();
+            let finalDoc = orderSnap.empty ? null : orderSnap.docs[0];
+
+            if (!finalDoc) {
+                const oldSnap = await ordersRef.where('jobId', '==', targetOutlookId).limit(1).get();
+                if (!oldSnap.empty) finalDoc = oldSnap.docs[0];
+            }
+
+            if (finalDoc) {
+                await finalDoc.ref.update({
                     lastEmailEntryId: entry_id,
                     entry_id: entry_id,
                     store_id: store_id || '',
@@ -142,7 +171,7 @@ module.exports = async function handler(req, res) {
 
         return res.status(200).json({
             success: true,
-            jobId: targetJobId,
+            outlookId: targetOutlookId,
             emailId: emailRef.id,
             message: 'Email processed successfully'
         });

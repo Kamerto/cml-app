@@ -21,6 +21,7 @@ export interface PrintItem {
 }
 
 export interface JobData {
+  fireId?: string; // Interní Firestore ID pro bezpečné mazání
   id: string;
   jobId: string;
   customer: string;
@@ -47,7 +48,9 @@ export interface JobData {
   lastEmailEntryId?: string;
   entry_id?: string;
   store_id?: string;
+  outlookId?: string;
   isNew?: boolean;
+  zIndex?: number;
 }
 
 export interface Column {

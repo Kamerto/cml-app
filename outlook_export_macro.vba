@@ -41,7 +41,7 @@ Sub PoslatDoAplikace()
     strReceivedAt = Format(objMail.ReceivedTime, "yyyy-mm-ddThh:nn:ss") & "Z"
     
     ' ✅ FINÁLNÍ URL (PRODUKCE)
-    url = "https://cml-app-xdy4.vercel.app/api/incoming"
+    url = "https://cml-app-v2-nine.vercel.app/api/incoming"
 
     ' 4. JSON
     payload = "{" & _

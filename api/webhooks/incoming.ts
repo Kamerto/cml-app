@@ -84,7 +84,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0
                 })),
                 position: { x: 100, y: 100 },
-                isTracked: true,
+                isTracked: false, // NOVÉ: Nezobrazovat hned ve frontě na cestě
                 entry_id: entry_id,
                 store_id: store_id || '',
                 created_at: FieldValue.serverTimestamp()

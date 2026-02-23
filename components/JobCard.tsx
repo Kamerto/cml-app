@@ -8,6 +8,7 @@ interface JobCardProps {
   onClick: () => void;
   onDelete: (id: string) => void;
   onStatusChange: (id: string, status: JobStatus) => void;
+  onBringToFront?: () => void;
 }
 
 const STAGE_LABELS: Record<string, string> = {
@@ -19,13 +20,14 @@ const STAGE_LABELS: Record<string, string> = {
 
 
 
-const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChange }) => {
+const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChange, onBringToFront }) => {
   const statusConfig = COLUMNS.find(c => c.id === job.status);
 
   const districtMatch = job.address?.match(/Praha\s*(\d{1,2})/i);
   const district = districtMatch ? `Praha ${districtMatch[1]}` : null;
 
   const handleDragStart = (e: React.DragEvent) => {
+    onBringToFront?.();
     e.dataTransfer.setData('jobId', job.id);
     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
     e.dataTransfer.setData('offsetX', (e.clientX - rect.left).toString());
@@ -97,7 +99,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
       style={{
         left: `${job.position.x}px`,
         top: `${job.position.y}px`,
-        zIndex: job.isNew ? 9999 : undefined,
+        zIndex: job.isNew ? 1000000001 : (job.zIndex || 1),
         ...getStyle()
       }}
     >

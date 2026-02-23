@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Search, Sparkles,
-  Settings, Bot, X, Printer,
+  Settings, Bot, X, Printer, Trash2,
   Loader2, MapPin, Zap, Navigation,
   Layers, Maximize, Minimize, FolderSync, LogOut
 } from 'lucide-react';
@@ -11,7 +11,7 @@ import { INITIAL_JOBS } from './constants';
 import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
 import { GoogleGenAI, Type } from '@google/genai';
-import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth, db, PUBLIC_ORDERS_COLLECTION } from './firebase';
 
@@ -19,6 +19,7 @@ const EMAILS_COLLECTION = 'zakazka_emails';
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
+  const VERSION = 'v2.7.11-FIX';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -77,10 +78,12 @@ const App: React.FC = () => {
         const docRef = snapshot.docs[0].ref;
         await updateDoc(docRef, { ...job, lastUpdated: serverTimestamp() });
         console.log('Firebase UPDATE:', job.jobId);
-      } else {
-        // Vytvoření nového
+      } else if (job.isTracked) {
+        // Vytvoření nového POUZE pokud je isTracked: true (Generovat Pytlík / Fronta a tisk)
         await addDoc(collection(db, PUBLIC_ORDERS_COLLECTION), { ...job, created_at: serverTimestamp() });
-        console.log('Firebase CREATE:', job.jobId);
+        console.log('Firebase CREATE (Tracked):', job.jobId);
+      } else {
+        console.log('Firebase SKIP CREATE (Not tracked yet):', job.jobId);
       }
     } catch (e) {
       console.error('Chyba při ukládání do Firebase:', e);
@@ -88,17 +91,64 @@ const App: React.FC = () => {
   };
 
   // Smazání zakázky z Firebase
-  const deleteFromFirebase = async (jobId: string, orderId: string) => {
+  const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string) => {
     try {
+      if (fireId) {
+        await deleteDoc(doc(db, PUBLIC_ORDERS_COLLECTION, fireId));
+        console.log('Zakázka smazána z Firebase (dle Doc ID):', fireId);
+        return;
+      }
+      // Fallback pro staré verze nebo pokud fireId chybí
       const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", orderId || jobId));
       const snaps = await getDocs(q);
       snaps.forEach((doc) => {
         deleteDoc(doc.ref);
       });
-      console.log('Zakázka smazána z Firebase:', orderId);
+      console.log('Zakázka smazána z Firebase (vyhledáváním):', orderId);
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
     }
+  };
+
+  const cleanupGhostJobs = async () => {
+    if (!confirm('Tato akce vymaže z databáze všechny zakázky, které mají poškozené ID (???, prázdné nebo null). Ostatní zakázky zůstanou nedotčeny. Chcete pokračovat?')) return;
+    try {
+      // 1. Smazat "???"
+      const q1 = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", "???"));
+      // 2. Smazat prázdné nebo "null"
+      const q2 = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", ""));
+      const q3 = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", "null"));
+      const q4 = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", "ID?"));
+
+      const [s1, s2, s3, s4] = await Promise.all([
+        getDocs(q1), getDocs(q2), getDocs(q3), getDocs(q4)
+      ]);
+
+      const deletePromises = [...s1.docs, ...s2.docs, ...s3.docs, ...s4.docs].map(doc => deleteDoc(doc.ref));
+      await Promise.all(deletePromises);
+
+      alert(`Smazáno ${deletePromises.length} poškozených zakázek z databáze.`);
+      // Lokální state se aktualizuje přes onSnapshot
+    } catch (e) {
+      console.error('Chyba při čištění databáze:', e);
+      alert('Chyba při čištění databáze.');
+    }
+  };
+
+
+  const bringToFront = async (id: string) => {
+    setJobs(prev => {
+      const job = prev.find(j => j.id === id);
+      if (!job) return prev;
+
+      // CSS max z-index is ~2.1 billion. Cap timestamps to 1 billion.
+      const newZIndex = Date.now() % 1000000000;
+      if (job.zIndex === newZIndex) return prev;
+
+      const updatedJob = { ...job, zIndex: newZIndex };
+      saveToFirebase(updatedJob);
+      return prev.map(j => j.id === id ? updatedJob : j);
+    });
   };
 
   // Aktualizuje zakazka_id v emailech když se TEMP ID změní na reálné
@@ -142,8 +192,8 @@ const App: React.FC = () => {
 
         changes.forEach(change => {
           const data = change.doc.data() as JobData;
-          // Ignorujeme, pokud data nejsou validní JobData (např. chybí customer)
-          if (!data.jobId) return;
+          // Ignorujeme, pokud data nejsou validní JobData (např. chybí jobId nebo je to ghost ID)
+          if (!data.jobId || data.jobId === '???' || data.jobId === 'ID?') return;
 
           // Hledáme, zda už zakázku máme (podle jobId)
           const index = newJobs.findIndex(j => j.jobId === data.jobId);
@@ -154,28 +204,34 @@ const App: React.FC = () => {
               // Musíme zajistit, že má všechny potřebné fieldy pro UI
               const newJob: JobData = {
                 ...data,
+                fireId: change.doc.id,
                 id: Math.random().toString(36).substring(2, 11), // Vygenerujeme lokální ID pro React key
                 // Pokud chybí, doplníme defaulty
                 status: data.status || JobStatus.INQUIRY,
                 position: data.position || { x: 100, y: 100 },
                 items: data.items || [],
                 technology: data.technology || [],
-                dateReceived: data.dateReceived || new Date().toISOString().split('T')[0]
+                dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
+                zIndex: data.zIndex || Date.now()
               };
               newJobs = [newJob, ...newJobs]; // Přidáme na začátek
               hasChanges = true;
-              console.log('📥 Stažena nová zakázka z Firebase:', data.jobId);
+              console.log('📥 Stažena nová zakázka z Firebase:', data.jobId || change.doc.id);
             }
           }
 
           if (change.type === 'modified') {
             if (index !== -1) {
               const current = newJobs[index];
-              if (current.status !== data.status || current.trackingStage !== data.trackingStage) {
-                // isNew je pouze lokální stav – nepřepisujeme ho daty z Firebase
-                newJobs[index] = { ...current, ...data, isNew: current.isNew };
+              // Aktualizujeme vždy, pokud se změnila data (s výjimkou čistě lokálního isNew)
+              // Použijeme JSON stringify pro jednoduché porovnání hlubokých změn bez isNew
+              const { isNew: _currentIsNew, ...currentPure } = current;
+              const { isNew: _dataIsNew, ...dataPure } = data;
+
+              if (JSON.stringify(currentPure) !== JSON.stringify({ ...dataPure, fireId: change.doc.id, id: current.id })) {
+                newJobs[index] = { ...current, ...data, fireId: change.doc.id, isNew: current.isNew };
                 hasChanges = true;
-                console.log('🔄 Aktualizována zakázka z Firebase:', data.jobId);
+                console.log('🔄 Aktualizována zakázka z Firebase:', data.jobId || change.doc.id);
               }
             }
           }
@@ -301,7 +357,8 @@ Text poptávky: "${aiText}"`,
           cooperation: '',
           shippingNotes: '',
           generalNotes: sanitize(data.generalNotes),
-          icon: 'FileText'
+          icon: 'FileText',
+          zIndex: Date.now()
         };
         setJobs(prev => [newJob, ...prev]);
         setIsAiPanelOpen(false);
@@ -529,6 +586,8 @@ Text poptávky: "${aiText}"`,
       dateReceived: new Date().toISOString().split('T')[0], deadline: '',
       technology: [], status: JobStatus.INQUIRY, position: pos,
       isNew: true,
+      isTracked: false, // NOVÉ: Nezobrazovat hned ve frontě na cestě
+      zIndex: Date.now(),
       items: [{ id: Math.random().toString(36).substring(2, 11), description: '', quantity: 0, size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0 }],
       bindingType: '', laminationType: '', processing: '', cooperation: '', shippingNotes: '', generalNotes: '', icon: 'FileText'
     };
@@ -562,7 +621,7 @@ Text poptávky: "${aiText}"`,
       const jobToDelete = jobs.find(j => j.id === id);
       setJobs(prev => prev.filter(j => j.id !== id));
       if (jobToDelete) {
-        deleteFromFirebase(id, jobToDelete.jobId || jobToDelete.id);
+        deleteFromFirebase(id, jobToDelete.jobId || jobToDelete.id, jobToDelete.fireId);
       }
       setIsModalOpen(false);
       setSelectedJob(null);
@@ -601,18 +660,27 @@ Text poptávky: "${aiText}"`,
       if (status === JobStatus.READY_FOR_PROD) {
         const jobToOpen = updated.find(j => j.id === id);
         if (jobToOpen) {
-          setSelectedJob(jobToOpen);
-          setIsModalOpen(true);
+          const hasMissingTech = !jobToOpen.technology || jobToOpen.technology.length === 0;
+          const hasMissingColors = jobToOpen.items.some(item => !item.colors || item.colors.trim() === '');
+
+          if (hasMissingTech || hasMissingColors) {
+            setSelectedJob(jobToOpen);
+            setIsModalOpen(true);
+          }
         }
       }
       return updated;
     });
   };
 
-  const filteredJobs = jobs.filter(j =>
-    j.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    j.jobName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredJobs = jobs.filter(j => {
+    // Schováme poškozené zakázky z hlavního zobrazení
+    const id = (j.jobId || '').toLowerCase().trim();
+    if (!id || id === '???' || id === 'id?' || id === 'null' || id === 'undefined') return false;
+
+    return (j.customer || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (j.jobName || '').toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   if (isAuthLoading) {
     return (
@@ -634,7 +702,7 @@ Text poptávky: "${aiText}"`,
             <div className="bg-purple-600 p-2 rounded-xl"><Printer className="w-5 h-5 text-white" /></div>
             <h1 className="text-xl font-black text-white tracking-tighter uppercase flex items-center gap-2">
               CML BOARD
-              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">v2.7.2</span>
+              <span className="bg-purple-600 text-white text-[10px] px-2 py-0.5 rounded-full shadow-lg shadow-purple-900/50">{VERSION}</span>
             </h1>
           </div>
           <div className="relative">
@@ -655,7 +723,6 @@ Text poptávky: "${aiText}"`,
             <FolderSync className="w-4 h-4 text-amber-400" />
             <span className="hidden lg:inline">Sdružit k Expresu</span>
           </button>
-          <button onClick={handleAutoArrange} title="Seskupí zakázky ve stejných rajónech jako jsou ty expresní" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all"><MapPin className="w-4 h-4 text-emerald-400" /> <span className="hidden lg:inline">Rajóny Expresu</span></button>
           <button onClick={() => setIsAiPanelOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700"><Bot className="w-4 h-4 text-purple-400" /> <span className="hidden lg:inline">AI Import</span></button>
           <button onClick={handleCreateJob} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black shadow-lg shadow-purple-900/40 active:scale-95 transition-all"><Plus className="w-4 h-4" /> NOVÁ ZAKÁZKA</button>
           <div className="w-px h-8 bg-slate-800 mx-1 hidden md:block"></div>
@@ -686,15 +753,20 @@ Text poptávky: "${aiText}"`,
           <JobCard
             key={job.id}
             job={job}
-            onClick={() => { setSelectedJob(job); setIsModalOpen(true); }}
+            onClick={() => {
+              bringToFront(job.id);
+              setSelectedJob(job);
+              setIsModalOpen(true);
+            }}
             onDelete={handleDeleteJob}
             onStatusChange={handleStatusChangeOnBoard}
+            onBringToFront={() => bringToFront(job.id)}
           />
         ))}
       </main>
 
       {isAiPanelOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[2000] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[2147483647] flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 w-full max-w-xl shadow-2xl">
             <h3 className="text-xl font-bold flex items-center gap-3 mb-6"><Sparkles className="w-6 h-6 text-purple-400" /> AI Import</h3>
             <textarea className="w-full h-56 bg-slate-800 border border-slate-700 rounded-2xl p-5 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500 outline-none resize-none" placeholder="Vložte text poptávky..." value={aiText} onChange={(e) => setAiText(e.target.value)} />
@@ -714,7 +786,7 @@ Text poptávky: "${aiText}"`,
       )}
 
       {isSettingsOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[2000] flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[2147483647] flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 w-full max-w-xl shadow-2xl">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-bold flex items-center gap-3"><Settings className="w-6 h-6 text-slate-400" /> Nastavení</h3>
@@ -741,9 +813,22 @@ Text poptávky: "${aiText}"`,
               </div>
             </div>
 
-            <div className="flex justify-end mt-10">
-              <button onClick={() => setIsSettingsOpen(false)} className="px-10 py-3 bg-purple-600 text-white rounded-xl text-sm font-black shadow-lg hover:bg-purple-500 active:scale-95 transition-all">HOTOVO</button>
+            <div className="pt-6 border-t border-slate-800">
+              <h4 className="text-[10px] font-black text-slate-500 uppercase mb-4 tracking-widest">Servisní nástroje</h4>
+              <button
+                onClick={cleanupGhostJobs}
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl text-[11px] font-black border border-red-500/30 transition-all uppercase tracking-wider"
+              >
+                <Trash2 className="w-4 h-4" /> SMAZAT '???' ZAKÁZKY
+              </button>
+              <p className="mt-3 text-[9px] text-slate-600 text-center italic">
+                Vymaže z databáze pouze záznamy s ID "???". Ostré zakázky zůstanou.
+              </p>
             </div>
+          </div>
+
+          <div className="flex justify-end mt-10">
+            <button onClick={() => setIsSettingsOpen(false)} className="px-10 py-3 bg-purple-600 text-white rounded-xl text-sm font-black shadow-lg hover:bg-purple-500 active:scale-95 transition-all">HOTOVO</button>
           </div>
         </div>
       )}
