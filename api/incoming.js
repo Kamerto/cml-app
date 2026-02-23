@@ -103,7 +103,7 @@ module.exports = async function handler(req, res) {
                 created_at: FieldValue.serverTimestamp()
             };
 
-            await db.collection('orders').add(newJob);
+            await db.collection('cml_board_cards').add(newJob);
             targetOutlookId = generatedOutlookId;
             console.log('✅ Vytvořena nová karta s Outlook ID:', targetOutlookId);
         } else {

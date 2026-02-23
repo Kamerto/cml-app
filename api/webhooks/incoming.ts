@@ -90,7 +90,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 created_at: FieldValue.serverTimestamp()
             };
 
-            await db.collection('orders').add(newJob);
+            await db.collection('cml_board_cards').add(newJob);
             targetJobId = newJob.jobId;
             console.log('✅ Vytvořena nová karta:', targetJobId);
         } else {

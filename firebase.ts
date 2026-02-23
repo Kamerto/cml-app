@@ -14,7 +14,8 @@ const firebaseConfig = {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
-const PUBLIC_ORDERS_COLLECTION = 'orders';
+const PUBLIC_ORDERS_COLLECTION = 'orders'; // Toto zůstává pro zpětnou kompatibilitu symbolu, ale budeme používat nové názvy
+const BOARD_CARDS_COLLECTION = 'cml_board_cards';
 const INVITES_COLLECTION = 'invites';
 
-export { auth, db, PUBLIC_ORDERS_COLLECTION, INVITES_COLLECTION };
+export { auth, db, PUBLIC_ORDERS_COLLECTION, BOARD_CARDS_COLLECTION, INVITES_COLLECTION };
