@@ -35,9 +35,6 @@ const App: React.FC = () => {
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
   const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
   console.log("APP.TSX: MOCK_MODE =", MOCK_MODE);
-  if (MOCK_MODE) {
-    alert("CML běží v MOCK režimu na portu 3002");
-  }
 
   const [user, setUser] = useState<User | null>(MOCK_MODE ? { email: 'mock@cml.local' } as any : null);
   const [isAuthLoading, setIsAuthLoading] = useState(!MOCK_MODE);
@@ -243,7 +240,6 @@ const App: React.FC = () => {
 
   // --- FIREBASE SYNC: Obousměrná synchronizace ---
   useEffect(() => {
-    if (MOCK_MODE) return; // Mock: data jsou z INITIAL_JOBS, Firebase ignorujeme
     // Posloucháme primárně 'BOARD_CARDS_COLLECTION' (naše Tabule)
     const q = query(collection(db, BOARD_CARDS_COLLECTION));
 
