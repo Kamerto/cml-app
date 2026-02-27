@@ -33,8 +33,14 @@ const App: React.FC = () => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
-  const [user, setUser] = useState<User | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
+  console.log("APP.TSX: MOCK_MODE =", MOCK_MODE);
+  if (MOCK_MODE) {
+    alert("CML běží v MOCK režimu na portu 3002");
+  }
+
+  const [user, setUser] = useState<User | null>(MOCK_MODE ? { email: 'mock@cml.local' } as any : null);
+  const [isAuthLoading, setIsAuthLoading] = useState(!MOCK_MODE);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
 
@@ -43,6 +49,7 @@ const App: React.FC = () => {
   }, [jobs]);
 
   useEffect(() => {
+    if (MOCK_MODE) return;
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setUser(user);
       setIsAuthLoading(false);
@@ -89,12 +96,22 @@ const App: React.FC = () => {
       if (job.isTracked && currentFireId) {
         // Použijeme setDoc místo addDoc, aby ID bylo stejné jako na Tabuli
         const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, currentFireId);
+
+        // --- MAPPING FOR QUEUE APP COMPATIBILITY ---
+        const queueMapping = {
+          orderNumber: job.jobId || (job as any).orderNumber || "",
+          clientName: job.customer ? (job.customer + (job.jobName ? " / " + job.jobName : "")) : ((job as any).clientName || ""),
+          currentStage: job.trackingStage || (job as any).currentStage || "studio",
+          printType: Array.isArray(job.technology) ? job.technology : ((job as any).printType || [])
+        };
+
         await setDoc(publicDocRef, {
           ...job,
+          ...queueMapping,
           fireId: currentFireId, // Zde to slouží jako odkaz zpět k tabuli
           lastUpdated: serverTimestamp()
         });
-        console.log('Firebase PUBLIC SYNC (Unified ID):', job.jobId);
+        console.log('Firebase PUBLIC SYNC (Unified ID + Mapping):', job.jobId);
       }
     } catch (e) {
       console.error('Chyba při ukládání do Firebase:', e);
@@ -159,10 +176,13 @@ const App: React.FC = () => {
       let count = 0;
 
       for (const d of snaps.docs) {
-        const data = d.data() as JobData;
-        const id = (data.jobId || '').toLowerCase().trim();
+        const data = d.data() as any;
+        const jobId = (data.jobId || '').toLowerCase().trim();
+        const orderNumber = (data.orderNumber || '').toLowerCase().trim();
 
-        if (id && id !== '???' && id !== 'id?' && id !== 'null' && id !== 'undefined' && id !== 'nan') {
+        const isValidId = (id: string) => id && id !== '???' && id !== 'id?' && id !== 'null' && id !== 'undefined' && id !== 'nan';
+
+        if (isValidId(jobId) || isValidId(orderNumber)) {
           // PŘEMÍSTĚNÍ: Použijeme STEJNÉ ID dokumentu pro Tabuli
           await setDoc(doc(db, BOARD_CARDS_COLLECTION, d.id), {
             ...data,
@@ -171,7 +191,7 @@ const App: React.FC = () => {
           });
           count++;
         } else {
-          // Smazání poškozených ze staré fronty (orders)
+          // Smazání poškozených ze staré fronty (orders) - POUZE POKUD NEMÁ ŽÁDNÉ ID
           await deleteDoc(d.ref);
         }
       }
@@ -223,6 +243,7 @@ const App: React.FC = () => {
 
   // --- FIREBASE SYNC: Obousměrná synchronizace ---
   useEffect(() => {
+    if (MOCK_MODE) return; // Mock: data jsou z INITIAL_JOBS, Firebase ignorujeme
     // Posloucháme primárně 'BOARD_CARDS_COLLECTION' (naše Tabule)
     const q = query(collection(db, BOARD_CARDS_COLLECTION));
 

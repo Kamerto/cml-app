@@ -16,7 +16,10 @@ if (!getApps().length) {
 
 const db = getFirestore();
 
-// AI Funkce pro parsování e-mailu
+// --- SANDBOX KOLEKCE (izolované od produkce) ---
+const SANDBOX_BOARD = 'cml_board_cards_sandbox';
+const SANDBOX_EMAILS = 'zakazka_emails_sandbox';
+
 async function parseEmailWithAI(preview: string, subject: string, sender: string) {
     const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
@@ -41,10 +44,8 @@ JSON formát:
             contents: prompt,
         });
 
-        // Safe extraction of text from Gemini 2.0 SDK response
         const generatedText = result.candidates?.[0]?.content?.parts?.[0]?.text || '';
         const cleanJson = generatedText.replace(/```json|```/g, '').trim();
-
         return JSON.parse(cleanJson);
     } catch (e: any) {
         console.error('AI selhalo:', e.message);
@@ -57,6 +58,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         return res.status(405).json({ error: 'Method not allowed' });
     }
 
+    console.log('🧪 SANDBOX webhook volán');
+
     try {
         const { zakazka_id, subject, entry_id, store_id, preview, sender } = req.body;
 
@@ -66,13 +69,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         let targetJobId = zakazka_id;
 
-        // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
         if (!targetJobId) {
-            console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
+            console.log('✨ [SANDBOX] Nová zakázka přes AI...');
             const aiData = await parseEmailWithAI(preview || '', subject, sender || '');
 
             const newJob = {
-                jobId: `OUT-${Math.floor(Date.now() / 100000)}`,
+                jobId: `SBX-${Math.floor(Date.now() / 100000)}`,
                 customer: aiData.customer,
                 jobName: aiData.jobName,
                 status: 'Poptávka',
@@ -81,31 +83,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     id: Math.random().toString(36).substring(2, 11),
                     description: it.description || '',
                     quantity: it.quantity || 1,
-                    size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0
+                    size: '', colors: '', techSpecs: '', stockFormat: '',
+                    paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0
                 })),
                 position: { x: 100, y: 100 },
-                isTracked: false, // NOVÉ: Nezobrazovat hned ve frontě na cestě
-                entry_id: entry_id,
+                isTracked: false,
+                entry_id,
                 store_id: store_id || '',
+                _sandbox: true,
                 created_at: FieldValue.serverTimestamp()
             };
 
-            await db.collection('cml_board_cards').add(newJob);
+            await db.collection(SANDBOX_BOARD).add(newJob);
             targetJobId = newJob.jobId;
-            console.log('✅ Vytvořena nová karta:', targetJobId);
+            console.log('✅ [SANDBOX] Vytvořena karta:', targetJobId);
         } else {
-            // Pokud ID máme, ověříme existenci
-            const ordersSnapshot = await db.collection('orders_sandbox')
+            const snap = await db.collection(SANDBOX_BOARD)
                 .where('jobId', '==', targetJobId)
                 .limit(1)
                 .get();
 
-            if (ordersSnapshot.empty) {
-                return res.status(404).json({ error: `Job with ID ${targetJobId} not found` });
+            if (snap.empty) {
+                return res.status(404).json({ error: `[SANDBOX] Job ${targetJobId} not found` });
             }
         }
 
-        // Uložení e-mailu
         const emailData = {
             zakazka_id: targetJobId,
             subject,
@@ -113,20 +115,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             store_id: store_id || '',
             preview: preview || '',
             sender: sender || '',
+            _sandbox: true,
             created_at: new Date().toISOString(),
         };
 
-        const emailRef = await db.collection('zakazka_emails').add(emailData);
+        const emailRef = await db.collection(SANDBOX_EMAILS).add(emailData);
 
         return res.status(200).json({
             success: true,
             jobId: targetJobId,
             emailId: emailRef.id,
-            message: 'Email processed successfully'
+            sandbox: true,
+            message: '[SANDBOX] Email processed successfully'
         });
 
     } catch (error: any) {
-        console.error('Error processing webhook:', error);
+        console.error('[SANDBOX] Error:', error);
         return res.status(500).json({ error: 'Internal server error', details: error.message });
     }
 }

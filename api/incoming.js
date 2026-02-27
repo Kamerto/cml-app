@@ -108,7 +108,7 @@ module.exports = async function handler(req, res) {
             console.log('✅ Vytvořena nová karta s Outlook ID:', targetOutlookId);
         } else {
             // Pokud ID máme, ověříme existenci zakázky (hledáme v outlookId nebo jobId)
-            const ordersSnapshot = await db.collection('orders')
+            const ordersSnapshot = await db.collection('orders_sandbox')
                 .where('outlookId', '==', targetOutlookId)
                 .limit(1)
                 .get();
@@ -117,7 +117,7 @@ module.exports = async function handler(req, res) {
 
             if (!orderDoc) {
                 // Zkusíme ještě starý způsob přes jobId (kvůli zpětné kompatibilitě)
-                const oldOrdersSnapshot = await db.collection('orders')
+                const oldOrdersSnapshot = await db.collection('orders_sandbox')
                     .where('jobId', '==', targetOutlookId)
                     .limit(1)
                     .get();
@@ -147,7 +147,7 @@ module.exports = async function handler(req, res) {
 
         // Aktualizace zakázky o ID posledního e-mailu pro rychlý přístup z karty
         try {
-            const ordersRef = db.collection('orders');
+            const ordersRef = db.collection('orders_sandbox');
             // Hledáme v outlookId nebo jobId
             const orderSnap = await ordersRef.where('outlookId', '==', targetOutlookId).limit(1).get();
             let finalDoc = orderSnap.empty ? null : orderSnap.docs[0];
