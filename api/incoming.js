@@ -66,13 +66,32 @@ module.exports = async function handler(req, res) {
         }
 
         let targetOutlookId = zakazka_id || '';
-        let targetJobId = ''; // Bude vyplněno až ručně
 
-        // Pokud nemáme ID zakázky z webhooku (zakazka_id v body), zkusíme najít existující zakázku podle outlookId nebo jobId
-        // Ale webhook obvykle posílá zakazka_id pokud je to k existující.
-        // Pokud je zakazka_id prázdné, tvoříme novou.
+        // Funkce pro nalezení zakázky v obou kolekcích
+        async function findJobDoc(id) {
+            const collections = ['cml_board_cards', 'orders_sandbox'];
+            for (const colName of collections) {
+                // 1. Primární hledání podle technického outlookId
+                const snap = await db.collection(colName).where('outlookId', '==', id).limit(1).get();
+                if (!snap.empty) return snap.docs[0];
 
-        // Pokud chybí ID, zkusíme ji vytvořit přes AI
+                // 2. Sekundární hledání podle evidenčního jobId (pro první spárování nebo staré zakázky)
+                const oldSnap = await db.collection(colName).where('jobId', '==', id).limit(1).get();
+                if (!oldSnap.empty) {
+                    const doc = oldSnap.docs[0];
+                    // AUTOMATIKA: Pokud zakázka ještě nemá outlookId, rovnou ho tam zapíšeme
+                    if (!doc.data().outlookId) {
+                        console.log(`🔗 Automatické spárování: doplňuji outlookId ${id} k zakázce ${doc.data().jobId}`);
+                        await doc.ref.update({ outlookId: id });
+                    }
+                    return doc;
+                }
+            }
+            return null;
+        }
+
+        let existingJobDoc = null;
+
         if (!targetOutlookId) {
             console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
             const aiData = await parseEmailWithAI(preview || '', subject, sender);
@@ -80,8 +99,8 @@ module.exports = async function handler(req, res) {
             const generatedOutlookId = `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
 
             const newJob = {
-                jobId: '', // Necháme prázdné pro ruční vyplnění
-                outlookId: generatedOutlookId,
+                jobId: '', // Evidenční číslo (uživatel vyplní ručně)
+                outlookId: generatedOutlookId, // Technický link pro Outlook
                 customer: aiData.customer,
                 jobName: aiData.jobName,
                 status: 'Poptávka',
@@ -96,10 +115,10 @@ module.exports = async function handler(req, res) {
                     x: 100 + Math.floor(Math.random() * 400),
                     y: 100 + Math.floor(Math.random() * 400)
                 },
-                isTracked: false, // NOVÉ: Nezobrazovat hned ve frontě na cestě
+                isTracked: false,
                 entry_id: entry_id,
                 store_id: store_id || '',
-                zIndex: Date.now() % 1000000000, // Capped for CSS safety (max ~2.1B)
+                zIndex: Date.now() % 1000000000,
                 created_at: FieldValue.serverTimestamp()
             };
 
@@ -107,28 +126,12 @@ module.exports = async function handler(req, res) {
             targetOutlookId = generatedOutlookId;
             console.log('✅ Vytvořena nová karta s Outlook ID:', targetOutlookId);
         } else {
-            // Pokud ID máme, ověříme existenci zakázky (hledáme v outlookId nebo jobId)
-            const ordersSnapshot = await db.collection('orders_sandbox')
-                .where('outlookId', '==', targetOutlookId)
-                .limit(1)
-                .get();
-
-            let orderDoc = ordersSnapshot.empty ? null : ordersSnapshot.docs[0];
-
-            if (!orderDoc) {
-                // Zkusíme ještě starý způsob přes jobId (kvůli zpětné kompatibilitě)
-                const oldOrdersSnapshot = await db.collection('orders_sandbox')
-                    .where('jobId', '==', targetOutlookId)
-                    .limit(1)
-                    .get();
-                if (!oldOrdersSnapshot.empty) {
-                    orderDoc = oldOrdersSnapshot.docs[0];
-                }
-            }
-
-            if (!orderDoc) {
+            existingJobDoc = await findJobDoc(targetOutlookId);
+            if (!existingJobDoc) {
                 return res.status(404).json({ error: `Job with ID ${targetOutlookId} not found` });
             }
+            // Použijeme outlookId z dokumentu (pokud tam je), jinak to co přišlo
+            targetOutlookId = existingJobDoc.data().outlookId || targetOutlookId;
         }
 
         // Uložení e-mailu
@@ -145,29 +148,24 @@ module.exports = async function handler(req, res) {
 
         const emailRef = await db.collection('zakazka_emails').add(emailData);
 
-        // Aktualizace zakázky o ID posledního e-mailu pro rychlý přístup z karty
-        try {
-            const ordersRef = db.collection('orders_sandbox');
-            // Hledáme v outlookId nebo jobId
-            const orderSnap = await ordersRef.where('outlookId', '==', targetOutlookId).limit(1).get();
-            let finalDoc = orderSnap.empty ? null : orderSnap.docs[0];
-
-            if (!finalDoc) {
-                const oldSnap = await ordersRef.where('jobId', '==', targetOutlookId).limit(1).get();
-                if (!oldSnap.empty) finalDoc = oldSnap.docs[0];
-            }
-
-            if (finalDoc) {
-                await finalDoc.ref.update({
+        // Aktualizace nalezené zakázky o metadata e-mailu
+        if (existingJobDoc) {
+            try {
+                await existingJobDoc.ref.update({
                     lastEmailEntryId: entry_id,
                     entry_id: entry_id,
                     store_id: store_id || '',
                     lastUpdated: FieldValue.serverTimestamp()
                 });
+            } catch (uErr) {
+                console.error('Nepovinná aktualizace zakázky selhala:', uErr.message);
             }
-        } catch (uErr) {
-            console.error('Nepovinná aktualizace zakázky selhala:', uErr.message);
+        } else {
+            // Pro nově vytvořenou kartu už metadata máme v objektu při creatu (pokud bychom ji neaktualizovali hned znovu)
+            // Ale pro jistotu můžeme zkusit najít tu čerstvě vytvořenou, pokud by bylo potřeba.
+            // Aktuálně se metadata vkládají přímo do newJob při creation.
         }
+
 
         return res.status(200).json({
             success: true,

@@ -6,6 +6,6 @@
         }
     ],
     "env": {
-        "DEPLOY_ID": "v2.7.10-MAIL-FIX"
+        "DEPLOY_ID": "v2.7.11"
     }
 }

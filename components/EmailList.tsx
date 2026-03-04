@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobEmail } from '../types';
-import { Mail, Loader2, AlertTriangle, Copy, Check } from 'lucide-react';
+import { Mail, Loader2, AlertTriangle, Copy, Check, Link } from 'lucide-react';
 
 const EMAILS_COLLECTION = 'zakazka_emails';
 
@@ -59,20 +59,25 @@ const CopyButton: React.FC<{ entryId: string; storeId?: string }> = ({ entryId, 
     );
 };
 
-const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
+const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
     const [emails, setEmails] = useState<JobEmail[]>([]);
     const [loading, setLoading] = useState(true);
 
+    const linkId = outlookId || jobId;
+
     useEffect(() => {
-        if (!jobId) {
+        // Hledáme emaily primárně podle outlookId, sekundárně podle jobId (pro zpětnou kompatibilitu)
+        if (!linkId) {
             setLoading(false);
             return;
         }
 
         setLoading(true);
+        // Poznámka: Kolekce zakazka_emails používá pole 'zakazka_id' pro párování.
+        // To může být buď technické outlookId nebo ruční jobId.
         const q = query(
             collection(db, EMAILS_COLLECTION),
-            where('zakazka_id', '==', jobId)
+            where('zakazka_id', 'in', [jobId, outlookId].filter(Boolean))
         );
 
         const unsubscribe = onSnapshot(q, (snapshot) => {
@@ -89,7 +94,7 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
         });
 
         return () => unsubscribe();
-    }, [jobId]);
+    }, [jobId, outlookId]);
 
     if (loading) {
         return (
@@ -100,24 +105,59 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
         );
     }
 
-    if (emails.length === 0) {
-        return (
-            <div className="p-6 bg-slate-800/20 border-2 border-dashed border-slate-700/50 rounded-2xl text-center">
-                <Mail className="w-8 h-8 text-slate-700 mx-auto mb-2 opacity-50" />
-                <p className="text-sm font-bold text-slate-500">Žádné propojené e-maily</p>
-                <p className="text-[11px] text-slate-600 mt-1">
-                    Pošlete e-mail z Outlooku s ID zakázky <span className="font-mono text-slate-500">{jobId}</span> pro automatické propojení.
-                </p>
-            </div>
-        );
-    }
-
     return (
-        <div className="space-y-3">
-            <div className="flex items-center gap-2 mb-1">
+        <div className="space-y-4">
+            {/* Outlook Pairing ID Section */}
+            <div className="p-4 bg-sky-900/10 border border-sky-500/20 rounded-2xl">
+                <div className="flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Link className="w-3.5 h-3.5 text-sky-400" />
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Propojení zakázky s Outlookem</span>
+                        </div>
+                        <div className="font-mono text-sm font-bold text-sky-400 truncate">
+                            {outlookId ? outlookId : (jobId ? `${jobId} (PŘES ČÍSLO)` : 'ZATÍM NEPROPOJENO')}
+                        </div>
+                        <p className="text-[10px] text-slate-600 mt-1">
+                            💡 Toto ID použijte v makru při <strong className="text-slate-500">posílání</strong> e-mailu (ne pro otevření).
+                        </p>
+                    </div>
+
+                    {linkId && (
+                        <button
+                            type="button"
+                            title="Použijte při odesílání mailu z Outlooku – pro přiřazení k zakázce"
+                            onClick={() => {
+                                navigator.clipboard.writeText(linkId);
+                                alert(
+                                    'Zkopírováno ID propojení: ' + linkId + '\n\n' +
+                                    'Použijte toto ID při POSÍLÁNÍ e-mailu z Outlooku makrem – aby se mail přiřadil k zakázce.\n\n' +
+                                    '⚠️ POZOR: Pro OTEVŘENÍ existujícího e-mailu použijte tlačítko "KOPÍROVAT ID" u konkrétního e-mailu níže.'
+                                );
+                            }}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black bg-sky-600 hover:bg-sky-500 text-white active:scale-95 shadow-lg shadow-sky-900/20 transition-all uppercase shrink-0"
+                        >
+                            <Copy className="w-3.5 h-3.5" />
+                            Kopírovat link
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            {emails.length === 0 && (
+                <div className="p-6 bg-slate-800/20 border-2 border-dashed border-slate-700/50 rounded-2xl text-center">
+                    <Mail className="w-8 h-8 text-slate-700 mx-auto mb-2 opacity-50" />
+                    <p className="text-sm font-bold text-slate-500">Žádné propojené e-maily</p>
+                    <p className="text-[11px] text-slate-600 mt-1">
+                        Pošlete e-mail z Outlooku s ID zakázky <span className="font-mono text-slate-500">{jobId}</span> pro automatické propojení.
+                    </p>
+                </div>
+            )}
+
+            <div className="flex items-center gap-2 mb-1 pt-2">
                 <Mail className="w-4 h-4 text-purple-400" />
                 <span className="text-xs font-black text-slate-500 uppercase tracking-widest">
-                    E-maily ({emails.length})
+                    Párované e-maily ({emails.length})
                 </span>
             </div>
             {emails.map(email => (
@@ -164,8 +204,8 @@ const EmailList: React.FC<EmailListProps> = ({ jobId }) => {
             ))}
             <div className="p-4 bg-purple-900/10 border border-purple-500/20 rounded-xl">
                 <p className="text-[11px] text-purple-300 leading-relaxed">
-                    <strong className="text-purple-400">💡 Jak otevřít email:</strong><br />
-                    Klikněte na <strong>KOPÍROVAT ID</strong> → V Outlooku <strong>Alt+F8</strong> → Spusťte makro <strong>OtevritEmailZAplikace</strong>
+                    <strong className="text-purple-400">💡 Jak otevřít konkrétní email v Outlooku:</strong><br />
+                    U každého e-mailu níže klikněte na <strong>KOPÍROVAT ID</strong> → V Outlooku <strong>Alt+F8</strong> → Spusťte makro <strong>OtevritEmailZAplikace</strong>
                 </p>
             </div>
         </div>

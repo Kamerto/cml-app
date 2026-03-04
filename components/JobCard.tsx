@@ -113,8 +113,8 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
       {/* Header Row: ID, Tech Badges, Date */}
       <div className="flex items-center justify-between w-full mb-1 shrink-0">
         <div className="flex items-center gap-1 min-w-0 flex-1">
-          <div className={`px-2 py-0.5 rounded-lg ${textColorClass} text-[14px] font-black uppercase tracking-tighter truncate ${!job.jobId ? 'bg-amber-500/30 ring-1 ring-amber-400/40 text-amber-100' : 'bg-black/10 ring-1 ring-white/10'}`}>
-            {job.jobId || 'ID?'}
+          <div className={`px-2 py-0.5 rounded-lg ${textColorClass} text-[13px] font-black uppercase tracking-tighter truncate ${!job.jobId ? 'bg-amber-500/30 ring-1 ring-amber-400/40 text-amber-100' : 'bg-black/10 ring-1 ring-white/10'}`}>
+            {job.jobId || job.outlookId || 'ID?'}
           </div>
 
           <div className="flex gap-0.5 shrink-0">

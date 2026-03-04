@@ -2,7 +2,7 @@
   "name": "cml",
   "private": true,
   "type": "module",
-  "version": "2.7.10-MAIL-FIX",
+  "version": "2.7.11",
   "engines": {
     "node": ">=20.0.0"
   },

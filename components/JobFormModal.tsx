@@ -7,7 +7,7 @@ import {
   Hash, MapPin, ChevronRight,
   Calendar, Building, FileText, Cpu, Sparkles, Bot, Loader2,
   CheckCircle2, List, Zap, Map, Settings, Wand2, Merge,
-  Maximize, Layers, Scissors, Truck, Mail
+  Maximize, Layers, Scissors, Truck, Mail, Link
 } from 'lucide-react';
 import EmailList from './EmailList';
 import { JobData, PrintItem, JobStatus } from '../types';
@@ -220,6 +220,16 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
 
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
     setFormData(prev => ({ ...prev, items: prev.items.map(i => i.id === id ? { ...i, [field]: val } : i) }));
+  };
+
+  const handleSave = (extraData = {}) => {
+    let updatedData = { ...formData, ...extraData };
+    if (!updatedData.outlookId) {
+      const generatedId = `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
+      updatedData.outlookId = generatedId;
+      setFormData(updatedData);
+    }
+    onSave(updatedData);
   };
 
   const addItem = () => {
@@ -554,7 +564,10 @@ Text: "${itemAiText}"`,
             <button onClick={handleResetForm} className="flex items-center gap-2.5 px-6 py-3 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl text-[10px] font-black border border-red-500/30 active:scale-95 transition-all">
               <Trash2 className="w-4 h-4" /> VYMAZAT FORMULÁŘ
             </button>
-            <button onClick={() => onSave(formData)} className="flex items-center gap-2.5 px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl text-xs font-black shadow-xl shadow-purple-950/40 active:scale-95 transition-all">
+            <button
+              onClick={() => handleSave()}
+              className="flex items-center gap-2.5 px-6 py-3 bg-purple-600 hover:bg-purple-500 text-white rounded-2xl text-xs font-black shadow-xl shadow-purple-950/40 active:scale-95 transition-all"
+            >
               <Save className="w-4.5 h-4.5" /> <span className="hidden md:inline">ULOŽIT DO TABULE</span><span className="md:hidden">ULOŽIT</span>
             </button>
             <div className="flex items-center gap-2 ml-1 border-l border-slate-700/50 pl-4">
@@ -606,44 +619,17 @@ Text: "${itemAiText}"`,
             {activeTab === 'details' ? (
               <div className="max-w-3xl space-y-8 animate-in fade-in slide-in-from-left-4">
 
-                <div className="space-y-4 p-7 bg-slate-800/30 border border-slate-700/50 rounded-3xl">
-                  <div className="flex justify-between items-center">
-                    <label className="block text-xs font-black text-slate-600 uppercase flex items-center gap-2 tracking-widest">
-                      <Hash className={`w-4 h-4 transition-all duration-300 ${getIconStyle(formData.jobId)}`} /> Číslo zakázky (ID)
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const val = formData.jobId || formData.outlookId;
-                          if (val) {
-                            navigator.clipboard.writeText(val);
-                            alert('Zkopírováno: ' + val);
-                          } else {
-                            alert('Není co kopírovat.');
-                          }
-                        }}
-                        className={`text-[10px] font-black px-3 py-1.5 rounded-lg border transition-all ${(formData.jobId || formData.outlookId)
-                          ? 'bg-purple-600/20 border-purple-500/30 text-purple-400 hover:bg-purple-600 hover:text-white'
-                          : 'bg-slate-800 border-slate-700 text-slate-600 cursor-not-allowed'
-                          }`}
-                      >
-                        KOPÍROVAT ID
-                      </button>
-                    </div>
-                  </div>
+                <div className="space-y-4 p-7 bg-slate-800/30 border border-slate-700/50 rounded-3xl max-w-md">
+                  <label className="block text-xs font-black text-slate-600 uppercase flex items-center gap-2 tracking-widest">
+                    <Hash className={`w-4 h-4 transition-all duration-300 ${getIconStyle(formData.jobId)}`} /> Číslo zakázky (Interní)
+                  </label>
                   <input
                     type="text"
-                    className={`w-full border rounded-2xl px-7 py-5 text-2xl font-black focus:ring-4 focus:ring-purple-500/20 outline-none transition-all ${getFieldStyle(formData.jobId)}`}
+                    className={`w-full border rounded-2xl px-7 py-4 text-xl font-black focus:ring-4 focus:ring-purple-500/20 outline-none transition-all ${getFieldStyle(formData.jobId)}`}
                     value={formData.jobId || ''}
                     onChange={(e) => setFormData({ ...formData, jobId: e.target.value })}
-                    placeholder="VYPLŇTE ČÍSLO ZAKÁZKY..."
+                    placeholder="NAPŘ. 2024-001..."
                   />
-                  {!formData.jobId && formData.outlookId && (
-                    <p className="text-[10px] text-slate-600 font-bold ml-1">
-                      💡 Pro Outlook můžete použít: <span className="font-mono text-slate-500">{formData.outlookId}</span>
-                    </p>
-                  )}
                 </div>
 
                 <div>
@@ -684,9 +670,9 @@ Text: "${itemAiText}"`,
                 </div>
 
                 {/* Email List - zobrazí všechny e-maily přiřazené k této zakázce */}
-                {(formData.outlookId || (formData.jobId && !formData.jobId.startsWith('TEMP-'))) && (
+                {(formData.outlookId || formData.jobId) && (
                   <div className="mt-6">
-                    <EmailList jobId={formData.outlookId || formData.jobId} />
+                    <EmailList jobId={formData.jobId} outlookId={formData.outlookId} />
                   </div>
                 )}
 
@@ -707,7 +693,7 @@ Text: "${itemAiText}"`,
                 <div className="grid grid-cols-2 gap-8 p-7 bg-slate-800/30 border border-slate-700/50 rounded-3xl shadow-inner">
                   <div>
                     <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 flex items-center gap-2 tracking-widest">
-                      <Hash className={`w-3.5 h-3.5 ${getIconStyle(formData.jobId)}`} /> Číslo zakázky (ID)
+                      <Hash className={`w-3.5 h-3.5 ${getIconStyle(formData.jobId)}`} /> Číslo zakázky
                     </label>
                     <input
                       type="text"
@@ -1296,8 +1282,7 @@ Text: "${itemAiText}"`,
                 <button
                   onClick={() => {
                     // Povýšíme do sledovacího systému a uložíme
-                    const updatedData = { ...formData, isTracked: true };
-                    onSave(updatedData);
+                    handleSave({ isTracked: true });
                     setShowPrintEdit(false);
                     setTimeout(() => window.print(), 100);
                   }}
