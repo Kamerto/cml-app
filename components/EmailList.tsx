@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobEmail } from '../types';
-import { Mail, Loader2, AlertTriangle, Copy, Check, Link } from 'lucide-react';
+import { Mail, Loader2, AlertTriangle, Copy, Check, Link, X, ChevronDown } from 'lucide-react';
 
 const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true'
     ? 'zakazka_emails_sandbox'
@@ -10,7 +10,59 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true'
 
 interface EmailListProps {
     jobId: string;
+    outlookId?: string;
 }
+
+// Modální okno s celým textem mailu
+const EmailModal: React.FC<{ email: JobEmail; onClose: () => void }> = ({ email, onClose }) => {
+    return (
+        <div
+            className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
+            onClick={onClose}
+        >
+            <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
+            <div
+                className="relative z-10 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
+            >
+                {/* Header */}
+                <div className="flex items-start justify-between gap-4 p-5 border-b border-slate-700/50">
+                    <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                            <Mail className="w-4 h-4 text-purple-400 shrink-0" />
+                            <h3 className="text-sm font-black text-slate-200 truncate">
+                                {email.subject || '(bez předmětu)'}
+                            </h3>
+                        </div>
+                        {email.sender && (
+                            <p className="text-[11px] text-slate-400 font-medium">Od: {email.sender}</p>
+                        )}
+                        {email.received_at && (
+                            <p className="text-[10px] text-slate-600 font-mono mt-0.5">{email.received_at}</p>
+                        )}
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="shrink-0 w-8 h-8 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                {/* Tělo mailu */}
+                <div className="flex-1 overflow-y-auto p-5">
+                    {email.preview ? (
+                        <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">
+                            {email.preview}
+                        </pre>
+                    ) : (
+                        <p className="text-sm text-slate-500 italic">Žádný obsah k zobrazení.</p>
+                    )}
+                </div>
+            </div>
+        </div>
+    );
+};
 
 const CopyButton: React.FC<{ entryId: string; storeId?: string }> = ({ entryId, storeId }) => {
     const [copied, setCopied] = useState(false);
@@ -19,8 +71,6 @@ const CopyButton: React.FC<{ entryId: string; storeId?: string }> = ({ entryId, 
         try {
             await navigator.clipboard.writeText(entryId);
             setCopied(true);
-
-            // Show instructions after copying
             setTimeout(() => {
                 alert(
                     '✅ Entry ID zkopírováno!\n\n' +
@@ -33,10 +83,8 @@ const CopyButton: React.FC<{ entryId: string; storeId?: string }> = ({ entryId, 
                     '6. Email se otevře!'
                 );
             }, 100);
-
             setTimeout(() => setCopied(false), 3000);
         } catch {
-            // fallback
             const el = document.createElement('textarea');
             el.value = entryId;
             document.body.appendChild(el);
@@ -64,19 +112,17 @@ const CopyButton: React.FC<{ entryId: string; storeId?: string }> = ({ entryId, 
 const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
     const [emails, setEmails] = useState<JobEmail[]>([]);
     const [loading, setLoading] = useState(true);
+    const [openEmail, setOpenEmail] = useState<JobEmail | null>(null);
 
     const linkId = outlookId || jobId;
 
     useEffect(() => {
-        // Hledáme emaily primárně podle outlookId, sekundárně podle jobId (pro zpětnou kompatibilitu)
         if (!linkId) {
             setLoading(false);
             return;
         }
 
         setLoading(true);
-        // Poznámka: Kolekce zakazka_emails používá pole 'zakazka_id' pro párování.
-        // To může být buď technické outlookId nebo ruční jobId.
         const q = query(
             collection(db, EMAILS_COLLECTION),
             where('zakazka_id', 'in', [jobId, outlookId].filter(Boolean))
@@ -109,6 +155,11 @@ const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
 
     return (
         <div className="space-y-4">
+            {/* Modální okno */}
+            {openEmail && (
+                <EmailModal email={openEmail} onClose={() => setOpenEmail(null)} />
+            )}
+
             {/* Outlook Pairing ID Section */}
             <div className="p-4 bg-sky-900/10 border border-sky-500/20 rounded-2xl">
                 <div className="flex items-center justify-between gap-4">
@@ -134,7 +185,7 @@ const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
                                 alert(
                                     'Zkopírováno ID propojení: ' + linkId + '\n\n' +
                                     'Použijte toto ID při POSÍLÁNÍ e-mailu z Outlooku makrem – aby se mail přiřadil k zakázce.\n\n' +
-                                    '⚠️ POZOR: Pro OTEVŘENÍ existujícího e-mailu použijte tlačítko "KOPÍROVAT ID" u konkrétního e-mailu níže.'
+                                    '⚠️ POZOR: Pro OTEVŘÍT existujícího e-mailu použijte tlačítko "KOPÍROVAT ID" u konkrétního e-mailu níže.'
                                 );
                             }}
                             className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-[10px] font-black bg-sky-600 hover:bg-sky-500 text-white active:scale-95 shadow-lg shadow-sky-900/20 transition-all uppercase shrink-0"
@@ -162,6 +213,7 @@ const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
                     Párované e-maily ({emails.length})
                 </span>
             </div>
+
             {emails.map(email => (
                 <div
                     key={email.id}
@@ -191,19 +243,30 @@ const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
                                 </div>
                             )}
                         </div>
-                        {email.entry_id ? (
-                            <div className="flex flex-col gap-1.5 shrink-0">
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                            {/* Tlačítko zobrazit mail */}
+                            <button
+                                type="button"
+                                onClick={() => setOpenEmail(email)}
+                                className="flex items-center gap-1 px-3 py-2.5 rounded-xl text-[10px] font-black transition-all bg-slate-700 hover:bg-slate-600 text-slate-200 active:scale-95"
+                                title="Zobrazit celý text mailu"
+                            >
+                                <ChevronDown className="w-3.5 h-3.5" />
+                                ZOBRAZIT
+                            </button>
+                            {email.entry_id ? (
                                 <CopyButton entryId={email.entry_id} storeId={email.store_id} />
-                            </div>
-                        ) : (
-                            <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black bg-slate-700 text-slate-500 cursor-not-allowed shrink-0">
-                                <Copy className="w-3.5 h-3.5" />
-                                CHYBÍ ID
-                            </div>
-                        )}
+                            ) : (
+                                <div className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-[10px] font-black bg-slate-700 text-slate-500 cursor-not-allowed shrink-0">
+                                    <Copy className="w-3.5 h-3.5" />
+                                    CHYBÍ ID
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             ))}
+
             <div className="p-4 bg-purple-900/10 border border-purple-500/20 rounded-xl">
                 <p className="text-[11px] text-purple-300 leading-relaxed">
                     <strong className="text-purple-400">💡 Jak otevřít konkrétní email v Outlooku:</strong><br />
