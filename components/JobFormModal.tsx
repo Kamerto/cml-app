@@ -633,7 +633,11 @@ Text: "${itemAiText}"`,
                     type="text"
                     className={`w-full border rounded-2xl px-7 py-4 text-xl font-black focus:ring-4 focus:ring-purple-500/20 outline-none transition-all ${getFieldStyle(formData.jobId)}`}
                     value={formData.jobId || ''}
-                    onChange={(e) => setFormData({ ...formData, jobId: e.target.value })}
+                    onChange={(e) => setFormData({
+                      ...formData,
+                      jobId: e.target.value,
+                      outlookId: formData.outlookId || formData.jobId
+                    })}
                     placeholder="NAPŘ. 2024-001..."
                   />
                 </div>
