@@ -1465,9 +1465,17 @@ Text: "${itemAiText}"`,
       </div>
 
       {showMailSummary && (
-        <div className="fixed inset-0 z-[99999] bg-red-500 flex items-center justify-center">
-          <p className="text-white text-4xl font-black">TEST MODAL</p>
-          <button onClick={() => setShowMailSummary(false)} className="ml-4 p-4 bg-white text-black font-bold rounded-xl">ZAVŘÍT</button>
+        <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
+            <p className="text-white font-black text-lg mb-4">Souhrn mailů</p>
+            <p className="text-slate-400 text-sm mb-6">jobId: {formData.jobId} | outlookId: {formData.outlookId}</p>
+            <button
+              onClick={() => setShowMailSummary(false)}
+              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-black"
+            >
+              ZAVŘÍT
+            </button>
+          </div>
         </div>
       )}
     </>
