@@ -12,6 +12,7 @@ import {
 import EmailList from './EmailList';
 import { JobData, PrintItem, JobStatus } from '../types';
 import { PAPER_TYPES, BINDING_TYPES, LAMINA_TYPES, COLUMNS } from '../constants';
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { GoogleGenAI, Type } from '@google/genai';
 
 interface JobFormModalProps {
@@ -188,20 +189,20 @@ const MailSummaryModal: React.FC<{ jobId: string; outlookId?: string; onClose: (
   const [summary, setSummary] = useState('');
 
   useEffect(() => {
-    const ids = [jobId, outlookId].filter(Boolean);
+    const ids = [jobId, outlookId].filter(Boolean) as string[];
     if (!ids.length) { setLoading(false); return; }
-
-    import('firebase/firestore').then(({ collection, query, where, onSnapshot }) => {
-      const qu = query(collection(db, EMAILS_COLLECTION), where('zakazka_id', 'in', ids));
-      const unsub = onSnapshot(qu, (snap: any) => {
-        const loaded = snap.docs.map((d: any) => ({ id: d.id, ...d.data() }));
-        loaded.sort((a: any, b: any) => (b.created_at || '').localeCompare(a.created_at || ''));
-        setEmails(loaded);
-        setSelected(new Set(loaded.map((e: any) => e.id)));
-        setLoading(false);
-      });
-      return () => unsub();
-    });
+    const q = query(
+      collection(db, EMAILS_COLLECTION),
+      where('zakazka_id', 'in', ids)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      loaded.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      setEmails(loaded);
+      setSelected(new Set(loaded.map(e => e.id)));
+      setLoading(false);
+    }, () => setLoading(false));
+    return () => unsub();
   }, [jobId, outlookId]);
 
   const handleSummarize = async () => {
