@@ -14,12 +14,47 @@ interface EmailListProps {
 }
 
 // Modální okno s celým textem mailu
+const formatEmailPreview = (text: string) => {
+    // Rozdělí řetězec na jednotlivé zprávy podle "From:"
+    const parts = text.split(/(?=From:\s)/);
+    return parts.map((part, i) => {
+        // Odděl hlavičku od těla
+        const lines = part.split(/\s{2,}|\n/).filter(l => l.trim());
+        const headerLines: string[] = [];
+        const bodyLines: string[] = [];
+        let inBody = false;
+
+        lines.forEach(line => {
+            if (/^(From|Sent|To|Cc|Subject):/.test(line.trim())) {
+                headerLines.push(line.trim());
+            } else {
+                inBody = true;
+                if (inBody) bodyLines.push(line.trim());
+            }
+        });
+
+        return (
+            <div key={i} className={`${i > 0 ? 'mt-4 pt-4 border-t border-slate-700/50' : ''}`}>
+                {headerLines.length > 0 && (
+                    <div className="mb-2 space-y-0.5">
+                        {headerLines.map((h, j) => (
+                            <p key={j} className="text-[10px] font-mono text-slate-500">{h}</p>
+                        ))}
+                    </div>
+                )}
+                <div className="space-y-1">
+                    {bodyLines.map((line, j) => (
+                        <p key={j} className="text-xs text-slate-300 leading-relaxed">{line}</p>
+                    ))}
+                </div>
+            </div>
+        );
+    });
+};
+
 const EmailModal: React.FC<{ email: JobEmail; onClose: () => void }> = ({ email, onClose }) => {
     return (
-        <div
-            className="fixed inset-0 z-[99999] flex items-center justify-center p-4"
-            onClick={onClose}
-        >
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4" onClick={onClose}>
             <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
             <div
                 className="relative z-10 bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
@@ -51,13 +86,10 @@ const EmailModal: React.FC<{ email: JobEmail; onClose: () => void }> = ({ email,
 
                 {/* Tělo mailu */}
                 <div className="flex-1 overflow-y-auto p-5">
-                    {email.preview ? (
-                        <pre className="text-xs text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">
-                            {email.preview}
-                        </pre>
-                    ) : (
-                        <p className="text-sm text-slate-500 italic">Žádný obsah k zobrazení.</p>
-                    )}
+                    {email.preview
+                        ? formatEmailPreview(email.preview)
+                        : <p className="text-sm text-slate-500 italic">Žádný obsah k zobrazení.</p>
+                    }
                 </div>
             </div>
         </div>
