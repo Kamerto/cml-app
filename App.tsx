@@ -217,7 +217,6 @@ const App: React.FC = () => {
   // Aktualizuje zakazka_id v emailech když se TEMP ID změní na reálné
   const updateEmailsJobId = async (oldJobId: string, newJobId: string) => {
     if (!oldJobId || !newJobId || oldJobId === newJobId) return;
-    if (!oldJobId.startsWith('TEMP-') && !oldJobId.startsWith('SBX-') && !oldJobId.startsWith('OUT-')) return;
     try {
       const { getDocs: _getDocs, updateDoc: _updateDoc, query: _query, collection: _collection, where: _where } = await import('firebase/firestore');
       const q = _query(_collection(db, EMAILS_COLLECTION), _where('zakazka_id', '==', oldJobId));
@@ -662,7 +661,7 @@ Text poptávky: "${aiText}"`,
   const handleSaveJob = (data: JobData) => {
     // Pokud se mění z TEMP ID na reálné, přepojujeme emaily
     const previousJob = jobs.find(j => j.id === data.id);
-    if (previousJob && previousJob.jobId !== data.jobId && previousJob.jobId.startsWith('TEMP-')) {
+    if (previousJob && previousJob.jobId !== data.jobId) {
       updateEmailsJobId(previousJob.jobId, data.jobId);
     }
 
