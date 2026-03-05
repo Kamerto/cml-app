@@ -757,7 +757,7 @@ Text: "${itemAiText}"`,
               <div className="pt-4 mt-4 border-t border-slate-800/80">
                 <button
                   type="button"
-                  onClick={() => setShowMailSummary(true)}
+                  onClick={() => { console.log('SOUHRN CLICK', showMailSummary); setShowMailSummary(true); }}
                   className="w-full flex items-center gap-3 px-5 py-3.5 rounded-2xl text-sm font-black transition-all border-2 bg-slate-800/40 border-transparent text-slate-500 hover:bg-emerald-900/40 hover:text-emerald-300 hover:border-emerald-800"
                 >
                   <Sparkles className="w-4 h-4 opacity-70" />
