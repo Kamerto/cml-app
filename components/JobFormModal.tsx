@@ -1465,11 +1465,10 @@ Text: "${itemAiText}"`,
       </div>
 
       {showMailSummary && (
-        <MailSummaryModal
-          jobId={formData.jobId}
-          outlookId={formData.outlookId}
-          onClose={() => setShowMailSummary(false)}
-        />
+        <div className="fixed inset-0 z-[99999] bg-red-500 flex items-center justify-center">
+          <p className="text-white text-4xl font-black">TEST MODAL</p>
+          <button onClick={() => setShowMailSummary(false)} className="ml-4 p-4 bg-white text-black font-bold rounded-xl">ZAVŘÍT</button>
+        </div>
       )}
     </>
   );
