@@ -225,8 +225,14 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const handleSave = (extraData = {}) => {
     let updatedData = { ...formData, ...extraData };
     if (!updatedData.outlookId) {
-      const generatedId = `OUT-${Math.floor(Date.now() / 1000).toString().slice(-4)}-${Math.floor(Math.random() * 1000)}`;
-      updatedData.outlookId = generatedId;
+      // Pokud jobId začíná SBX- nebo OUT-, použij ho jako outlookId
+      if (updatedData.jobId && (updatedData.jobId.startsWith('SBX-') || updatedData.jobId.startsWith('OUT-'))) {
+        updatedData.outlookId = updatedData.jobId;
+      } else {
+        const prefix = import.meta.env.VITE_MOCK_MODE === 'true' ? 'SBX' : 'OUT';
+        const generatedId = `${prefix}-${Math.floor(Date.now() / 1000)}`;
+        updatedData.outlookId = generatedId;
+      }
       setFormData(updatedData);
     }
     onSave(updatedData);

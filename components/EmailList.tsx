@@ -4,7 +4,9 @@ import { db } from '../firebase';
 import { JobEmail } from '../types';
 import { Mail, Loader2, AlertTriangle, Copy, Check, Link } from 'lucide-react';
 
-const EMAILS_COLLECTION = 'zakazka_emails';
+const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true'
+    ? 'zakazka_emails_sandbox'
+    : 'zakazka_emails';
 
 interface EmailListProps {
     jobId: string;
