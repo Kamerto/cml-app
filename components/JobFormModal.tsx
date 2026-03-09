@@ -15,6 +15,37 @@ import { PAPER_TYPES, BINDING_TYPES, LAMINA_TYPES, COLUMNS } from '../constants'
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { GoogleGenAI, Type } from '@google/genai';
 
+// Centrální fallback funkce pro Gemini
+const GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+];
+
+async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
+  let lastError: any;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({ model, ...params });
+      // Pro konzistenci s původním kódem, který očekával výsledek přímo 
+      // nebo přes response.text u JSON režimu
+      return response;
+    } catch (e: any) {
+      const msg = (e?.message || String(e)).toLowerCase();
+      const isRetryable = msg.includes('503') || msg.includes('unavailable') ||
+        msg.includes('quota') || msg.includes('overloaded') ||
+        msg.includes('high demand') || msg.includes('429') ||
+        msg.includes('exhausted');
+      console.warn(`Model ${model} selhal:`, msg);
+      lastError = e;
+      if (!isRetryable) throw e; // Neopakuj pro jiné chyby (např. invalid API key)
+    }
+  }
+  throw lastError;
+}
+
 interface JobFormModalProps {
   job: JobData;
   onClose: () => void;
@@ -271,9 +302,7 @@ Buď stručný a věcný. Piš česky.
 
 EMAILY:
 ${mailsText}`;
-      const genAI = new GoogleGenAI({ apiKey });
-      const result = await genAI.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const result = await geminiWithFallback(apiKey, {
         contents: prompt,
       });
       const text = result.text || 'Nepodařilo se vygenerovat souhrn.';
@@ -312,9 +341,7 @@ ${mailsText}`;
         const s = String(val).trim();
         return s.toLowerCase() === 'null' ? '' : s;
       };
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const response = await geminiWithFallback(apiKey, {
         contents: `Jsi asistent tiskárny. Z emailové konverzace níže vyextrahuj technické parametry zakázky.
 DŮLEŽITÉ:
 1. Ber VŽDY nejnovější informace — pokud zákazník něco změnil, použij změnu.
@@ -495,9 +522,7 @@ ${mailsText}`,
         setIsAiFilling(false);
         return;
       }
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const response = await geminiWithFallback(apiKey, {
         contents: `Analýza technické části poptávky. 
 DŮLEŽITÉ: 
 1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0'). 
@@ -584,9 +609,7 @@ Text: "${aiInput}"`,
         setIsAiFilling(false);
         return;
       }
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const response = await geminiWithFallback(apiKey, {
         contents: `Analyzuj tento text a extrahuj specifikaci JEDNÉ tiskové položky do JSON. 
 DŮLEŽITÉ: 
 1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0'). 

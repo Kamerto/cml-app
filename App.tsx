@@ -11,6 +11,35 @@ import { INITIAL_JOBS } from './constants';
 import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
 import { GoogleGenAI, Type } from '@google/genai';
+
+// Centrální fallback funkce pro Gemini
+const GEMINI_MODELS = [
+  'gemini-3-flash-preview',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash',
+  'gemini-1.5-flash-8b',
+];
+
+async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
+  let lastError: any;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const ai = new GoogleGenAI({ apiKey });
+      const response = await ai.models.generateContent({ model, ...params });
+      return response;
+    } catch (e: any) {
+      const msg = (e?.message || String(e)).toLowerCase();
+      const isRetryable = msg.includes('503') || msg.includes('unavailable') ||
+        msg.includes('quota') || msg.includes('overloaded') ||
+        msg.includes('high demand') || msg.includes('429') ||
+        msg.includes('exhausted');
+      console.warn(`Model ${model} selhal:`, msg);
+      lastError = e;
+      if (!isRetryable) throw e;
+    }
+  }
+  throw lastError;
+}
 import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc, doc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth, db, PUBLIC_ORDERS_COLLECTION, BOARD_CARDS_COLLECTION } from './firebase';
@@ -350,9 +379,7 @@ const App: React.FC = () => {
         setIsAnalyzing(false);
         return;
       }
-      const ai = new GoogleGenAI({ apiKey });
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
+      const response = await geminiWithFallback(apiKey, {
         contents: `Převeď následující text poptávky do strukturovaného JSON formátu pro tiskovou zakázku. 
 DŮLEŽITÉ: 
 1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0', '1/1', '1/0'). 
