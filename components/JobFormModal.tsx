@@ -253,11 +253,24 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     setSummaryGenerating(true);
     setSummaryText('');
     try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
+        setSummaryText('Není nastaven API klíč. Nastavte ho v hlavním nastavení Tabule.');
+        setSummaryGenerating(false);
+        return;
+      }
       const mailsText = chosen.map((e, i) =>
         `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
       ).join('\n\n');
-      const prompt = `Jsi asistent tiskárny. Analyzuj tuto emailovou konverzaci k zakázce a vytvoř:\n\n1. ČASOVÁ OSA — stručně popiš co se kdy dělo (každý bod max 1-2 věty)\n2. AKTUÁLNÍ SOUHRN OBJEDNÁVKY — co si zákazník nakonec objednal se všemi změnami\n\nBuď stručný a věcný. Piš česky.\n\nEMAILY:\n${mailsText}`;
+      const prompt = `Jsi asistent tiskárny. Analyzuj tuto emailovou konverzaci k zakázce a vytvoř:
+
+1. ČASOVÁ OSA — stručně popiš co se kdy dělo (každý bod max 1-2 věty)
+2. AKTUÁLNÍ SOUHRN OBJEDNÁVKY — co si zákazník nakonec objednal se všemi změnami
+
+Buď stručný a věcný. Piš česky.
+
+EMAILY:
+${mailsText}`;
       const genAI = new GoogleGenAI({ apiKey });
       const result = await genAI.models.generateContent({
         model: 'gemini-2.0-flash',
@@ -265,9 +278,9 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
       });
       const text = result.text || 'Nepodařilo se vygenerovat souhrn.';
       setSummaryText(text);
-    } catch (e) {
+    } catch (e: any) {
       console.error('Summary error:', e);
-      setSummaryText('Chyba při generování souhrnu.');
+      setSummaryText('Chyba při generování souhrnu: ' + (e?.message || String(e)));
     }
     setSummaryGenerating(false);
   };
