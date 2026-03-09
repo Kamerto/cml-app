@@ -179,138 +179,6 @@ const SuggestionInput: React.FC<{
   );
 };
 
-// --- MAIL SUMMARY MODAL ---
-const MailSummaryModal: React.FC<{ jobId: string; outlookId?: string; onClose: () => void }> = ({ jobId, outlookId, onClose }) => {
-  const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_emails_sandbox' : 'zakazka_emails';
-  const [emails, setEmails] = useState<any[]>([]);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [loading, setLoading] = useState(true);
-  const [summarizing, setSummarizing] = useState(false);
-  const [summary, setSummary] = useState('');
-
-  useEffect(() => {
-    const ids = [jobId, outlookId].filter(Boolean) as string[];
-    if (!ids.length) { setLoading(false); return; }
-    const q = query(
-      collection(db, EMAILS_COLLECTION),
-      where('zakazka_id', 'in', ids)
-    );
-    const unsub = onSnapshot(q, (snap) => {
-      const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      loaded.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
-      setEmails(loaded);
-      setSelected(new Set(loaded.map(e => e.id)));
-      setLoading(false);
-    }, () => setLoading(false));
-    return () => unsub();
-  }, [jobId, outlookId]);
-
-  const handleSummarize = async () => {
-    const chosen = emails.filter(e => selected.has(e.id));
-    if (!chosen.length) return;
-    setSummarizing(true);
-    setSummary('');
-    try {
-      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-      const mailsText = chosen.map((e, i) =>
-        `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
-      ).join('\n\n');
-
-      const prompt = `Jsi asistent tiskárny. Analyzuj tuto emailovou konverzaci k zakázce a vytvoř:
-
-1. ČASOVÁ OSA — stručně popiš co se kdy dělo (každý bod max 1-2 věty)
-2. AKTUÁLNÍ SOUHRN OBJEDNÁVKY — co si zákazník nakonec objednal se všemi změnami
-
-Buď stručný a věcný. Piš česky.
-
-EMAILY:
-${mailsText}`;
-
-      const genAI = new GoogleGenAI({ apiKey });
-      const result = await genAI.models.generateContent({
-        model: 'gemini-1.5-flash',
-        contents: prompt,
-      });
-      const text = result.candidates?.[0]?.content?.parts?.[0]?.text || 'Nepodařilo se vygenerovat souhrn.';
-      setSummary(text);
-    } catch (e) {
-      console.error(e);
-      setSummary('Chyba při generování souhrnu.');
-    }
-    setSummarizing(false);
-  };
-
-  const toggleSelect = (id: string) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-xl z-[5000] flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
-        <header className="px-6 py-5 border-b border-slate-700 flex justify-between items-center shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="bg-emerald-600 p-2 rounded-xl"><Sparkles className="w-5 h-5 text-white" /></div>
-            <div>
-              <h3 className="text-lg font-black text-white">Souhrn mailů</h3>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest">AI analýza emailové konverzace</p>
-            </div>
-          </div>
-          <button onClick={onClose} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
-            <X className="w-4 h-4" />
-          </button>
-        </header>
-
-        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-          {loading ? (
-            <div className="flex items-center gap-2 text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> Načítám maily...</div>
-          ) : emails.length === 0 ? (
-            <p className="text-slate-500 text-sm">Žádné maily k dispozici.</p>
-          ) : (
-            <>
-              <p className="text-[11px] text-slate-500 uppercase font-black tracking-widest">Vyber maily pro souhrn</p>
-              {emails.map(email => (
-                <div
-                  key={email.id}
-                  onClick={() => toggleSelect(email.id)}
-                  className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all ${selected.has(email.id) ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-slate-700/50 bg-slate-800/30 opacity-50'}`}
-                >
-                  <div className={`w-5 h-5 rounded-md border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all ${selected.has(email.id) ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
-                    {selected.has(email.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-bold text-slate-200 truncate">{email.subject || '(bez předmětu)'}</p>
-                    <p className="text-[11px] text-slate-400">{email.sender} · {email.received_at || email.created_at?.slice(0, 10)}</p>
-                  </div>
-                </div>
-              ))}
-
-              <button
-                type="button"
-                onClick={handleSummarize}
-                disabled={summarizing || selected.size === 0}
-                className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black transition-all"
-              >
-                {summarizing ? <><Loader2 className="w-4 h-4 animate-spin" /> Generuji...</> : <><Sparkles className="w-4 h-4" /> Generovat souhrn ({selected.size} mailů)</>}
-              </button>
-
-              {summary && (
-                <div className="p-5 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl">
-                  <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3">AI Souhrn</p>
-                  <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{summary}</pre>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
 const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete }) => {
   const [formData, setFormData] = useState<JobData>(() => ({
     ...job,
@@ -351,6 +219,66 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [showPrintEdit, setShowPrintEdit] = useState(false);
   const [extraPrintNote, setExtraPrintNote] = useState('');
   const [showMailSummary, setShowMailSummary] = useState(false);
+
+  // --- MAIL SUMMARY (inline) ---
+  const SUMMARY_EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_emails_sandbox' : 'zakazka_emails';
+  const [summaryEmails, setSummaryEmails] = useState<any[]>([]);
+  const [summarySelected, setSummarySelected] = useState<Set<string>>(new Set());
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryGenerating, setSummaryGenerating] = useState(false);
+  const [summaryText, setSummaryText] = useState('');
+
+  useEffect(() => {
+    if (!showMailSummary) return;
+    const ids = [formData.jobId, formData.outlookId].filter(Boolean) as string[];
+    if (!ids.length) { setSummaryLoading(false); return; }
+    setSummaryLoading(true);
+    const q = query(
+      collection(db, SUMMARY_EMAILS_COLLECTION),
+      where('zakazka_id', 'in', ids)
+    );
+    const unsub = onSnapshot(q, (snap) => {
+      const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
+      loaded.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
+      setSummaryEmails(loaded);
+      setSummarySelected(new Set(loaded.map(e => e.id)));
+      setSummaryLoading(false);
+    }, () => setSummaryLoading(false));
+    return () => unsub();
+  }, [showMailSummary, formData.jobId, formData.outlookId]);
+
+  const handleGenerateSummary = async () => {
+    const chosen = summaryEmails.filter(e => summarySelected.has(e.id));
+    if (!chosen.length) return;
+    setSummaryGenerating(true);
+    setSummaryText('');
+    try {
+      const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+      const mailsText = chosen.map((e, i) =>
+        `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
+      ).join('\n\n');
+      const prompt = `Jsi asistent tiskárny. Analyzuj tuto emailovou konverzaci k zakázce a vytvoř:\n\n1. ČASOVÁ OSA — stručně popiš co se kdy dělo (každý bod max 1-2 věty)\n2. AKTUÁLNÍ SOUHRN OBJEDNÁVKY — co si zákazník nakonec objednal se všemi změnami\n\nBuď stručný a věcný. Piš česky.\n\nEMAILY:\n${mailsText}`;
+      const genAI = new GoogleGenAI({ apiKey });
+      const result = await genAI.models.generateContent({
+        model: 'gemini-2.0-flash',
+        contents: prompt,
+      });
+      const text = result.text || 'Nepodařilo se vygenerovat souhrn.';
+      setSummaryText(text);
+    } catch (e) {
+      console.error('Summary error:', e);
+      setSummaryText('Chyba při generování souhrnu.');
+    }
+    setSummaryGenerating(false);
+  };
+
+  const toggleSummarySelect = (id: string) => {
+    setSummarySelected(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
     setFormData(prev => ({ ...prev, items: prev.items.map(i => i.id === id ? { ...i, [field]: val } : i) }));
@@ -1465,16 +1393,63 @@ Text: "${itemAiText}"`,
       </div>
 
       {showMailSummary && (
-        <div className="fixed inset-0 z-[99999] bg-black/90 flex items-center justify-center">
-          <div className="bg-slate-900 border border-slate-700 rounded-2xl p-8 max-w-md w-full">
-            <p className="text-white font-black text-lg mb-4">Souhrn mailů</p>
-            <p className="text-slate-400 text-sm mb-6">jobId: {formData.jobId} | outlookId: {formData.outlookId}</p>
-            <button
-              onClick={() => setShowMailSummary(false)}
-              className="px-6 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded-xl font-black"
-            >
-              ZAVŘÍT
-            </button>
+        <div className="fixed inset-0 z-[2147483647] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 w-full max-w-2xl max-h-[90vh] rounded-3xl shadow-2xl flex flex-col overflow-hidden">
+            <header className="px-6 py-5 border-b border-slate-700 flex justify-between items-center shrink-0">
+              <div className="flex items-center gap-3">
+                <div className="bg-emerald-600 p-2 rounded-xl"><Sparkles className="w-5 h-5 text-white" /></div>
+                <div>
+                  <h3 className="text-lg font-black text-white">Souhrn mailů</h3>
+                  <p className="text-[10px] text-slate-400 uppercase tracking-widest">AI analýza emailové konverzace</p>
+                </div>
+              </div>
+              <button onClick={() => { setShowMailSummary(false); setSummaryText(''); }} className="w-8 h-8 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition-all">
+                <X className="w-4 h-4" />
+              </button>
+            </header>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {summaryLoading ? (
+                <div className="flex items-center gap-2 text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> Načítám maily...</div>
+              ) : summaryEmails.length === 0 ? (
+                <p className="text-slate-500 text-sm">Žádné maily k dispozici.</p>
+              ) : (
+                <>
+                  <p className="text-[11px] text-slate-500 uppercase font-black tracking-widest">Vyber maily pro souhrn</p>
+                  {summaryEmails.map(email => (
+                    <div
+                      key={email.id}
+                      onClick={() => toggleSummarySelect(email.id)}
+                      className={`flex items-start gap-3 p-4 rounded-2xl border-2 cursor-pointer transition-all ${summarySelected.has(email.id) ? 'border-emerald-500/50 bg-emerald-900/10' : 'border-slate-700/50 bg-slate-800/30 opacity-50'}`}
+                    >
+                      <div className={`w-5 h-5 rounded-md border-2 shrink-0 mt-0.5 flex items-center justify-center transition-all ${summarySelected.has(email.id) ? 'bg-emerald-500 border-emerald-500' : 'border-slate-600'}`}>
+                        {summarySelected.has(email.id) && <CheckCircle2 className="w-3 h-3 text-white" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-bold text-slate-200 truncate">{email.subject || '(bez předmětu)'}</p>
+                        <p className="text-[11px] text-slate-400">{email.sender} · {email.received_at || email.created_at?.slice(0, 10)}</p>
+                      </div>
+                    </div>
+                  ))}
+
+                  <button
+                    type="button"
+                    onClick={handleGenerateSummary}
+                    disabled={summaryGenerating || summarySelected.size === 0}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black transition-all"
+                  >
+                    {summaryGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Generuji...</> : <><Sparkles className="w-4 h-4" /> Generovat souhrn ({summarySelected.size} mailů)</>}
+                  </button>
+
+                  {summaryText && (
+                    <div className="p-5 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl">
+                      <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3">AI Souhrn</p>
+                      <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{summaryText}</pre>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
         </div>
       )}
