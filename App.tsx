@@ -715,7 +715,7 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleSaveJob = (data: JobData) => {
+  const handleSaveJob = (data: JobData, shouldClose = true) => {
     // Pokud se mění z TEMP ID na reálné, přepojujeme emaily
     const previousJob = jobs.find(j => j.id === data.id);
     if (previousJob && previousJob.jobId !== data.jobId) {
@@ -732,8 +732,10 @@ const App: React.FC = () => {
     // 2. Uložení do Firebase (na pozadí)
     saveToFirebase(data);
 
-    setIsModalOpen(false);
-    setSelectedJob(null);
+    if (shouldClose) {
+      setIsModalOpen(false);
+      setSelectedJob(null);
+    }
   };
 
   const handleDeleteJob = (id: string) => {

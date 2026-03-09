@@ -6,7 +6,7 @@ import {
   X, Save, Printer, Trash2, Plus,
   Hash, MapPin, ChevronRight,
   Calendar, Building, FileText, Cpu, Sparkles, Bot, Loader2,
-  CheckCircle2, List, Zap, Map, Settings, Wand2, Merge,
+  CheckCircle2, List, Zap, Map, Settings, Wand2, Merge, Check,
   Maximize, Layers, Scissors, Truck, Mail, Link, RefreshCw
 } from 'lucide-react';
 import EmailList from './EmailList';
@@ -49,7 +49,7 @@ async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
 interface JobFormModalProps {
   job: JobData;
   onClose: () => void;
-  onSave: (data: JobData) => void;
+  onSave: (data: JobData, shouldClose?: boolean) => void;
   onDelete: (id: string) => void;
 }
 
@@ -258,6 +258,34 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryGenerating, setSummaryGenerating] = useState(false);
   const [summaryText, setSummaryText] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const isFirstRender = useRef(true);
+
+  // --- AUTOSAVE ---
+  useEffect(() => {
+    if (isFirstRender.current) {
+      isFirstRender.current = false;
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setIsSaving(true);
+      // Připravíme data k uložení (obsahuje i outlookId logiku)
+      const dataToSave = { ...formData };
+      if (!dataToSave.outlookId) {
+        if (dataToSave.jobId && (dataToSave.jobId.startsWith('SBX-') || dataToSave.jobId.startsWith('OUT-'))) {
+          dataToSave.outlookId = dataToSave.jobId;
+        } else {
+          const prefix = import.meta.env.VITE_MOCK_MODE === 'true' ? 'SBX' : 'OUT';
+          dataToSave.outlookId = `${prefix}-${Math.floor(Date.now() / 1000)}`;
+        }
+      }
+      onSave(dataToSave, false);
+      setTimeout(() => setIsSaving(false), 800);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [formData]);
 
   useEffect(() => {
     if (!showMailSummary) return;
@@ -534,7 +562,7 @@ ${mailsText}`,
       }
       setFormData(updatedData);
     }
-    onSave(updatedData);
+    onSave(updatedData, true);
   };
 
   const addItem = () => {
@@ -926,6 +954,18 @@ Text: "${itemAiText}"`,
                 <Save className="w-4.5 h-4.5" /> <span className="hidden md:inline">ULOŽIT DO TABULE</span><span className="md:hidden">ULOŽIT</span>
               </button>
               <div className="flex items-center gap-2 ml-1 border-l border-slate-700/50 pl-4">
+                {isSaving && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded-lg text-[9px] font-black text-emerald-400 animate-pulse uppercase tracking-widest mr-2">
+                    <Loader2 className="w-3 h-3 animate-spin" />
+                    UKLÁDÁM
+                  </div>
+                )}
+                {!isSaving && isFirstRender.current === false && (
+                  <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 border border-white/5 rounded-lg text-[9px] font-black text-slate-500 uppercase tracking-widest mr-2">
+                    <Check className="w-3 h-3 text-emerald-500" />
+                    ULOŽENO
+                  </div>
+                )}
                 <button onClick={() => onDelete(formData.id)} className="p-2.5 text-slate-500 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-colors"><Trash2 className="w-5 h-5" /></button>
                 <button onClick={onClose} className="p-2.5 text-slate-500 hover:text-white hover:bg-slate-700 rounded-xl transition-colors"><X className="w-7 h-7" /></button>
               </div>
