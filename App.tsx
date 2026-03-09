@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Plus, Search, Sparkles,
-  Settings, Bot, X, Printer, Trash2,
+  Plus, Search,
+  Settings, X, Printer, Trash2,
   Loader2, MapPin, Zap, Navigation,
   Layers, Maximize, Minimize, FolderSync, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste,
   StickyNote
@@ -62,9 +62,6 @@ const App: React.FC = () => {
   const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
-  const [aiText, setAiText] = useState('');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
@@ -449,108 +446,6 @@ const App: React.FC = () => {
     }
 
     return { x, y };
-  };
-
-  const handleAiImport = async () => {
-    if (!aiText.trim()) return;
-    setIsAnalyzing(true);
-
-    // Pomocná funkce pro vyčištění dat od AI (převod "null", undefined atd. na prázdný řetězec)
-    const sanitize = (val: any) => {
-      if (val === null || val === undefined) return '';
-      const s = String(val).trim();
-      if (s.toLowerCase() === 'null') return '';
-      return s;
-    };
-
-    try {
-      const apiKey = manualApiKey || import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        alert("Není nastaven API klíč. Prosím nastavte ho v nastavení (ozubené kolečko).");
-        setIsSettingsOpen(true);
-        setIsAnalyzing(false);
-        return;
-      }
-      const response = await geminiWithFallback(apiKey, {
-        contents: `Převeď následující text poptávky do strukturovaného JSON formátu pro tiskovou zakázku. 
-DŮLEŽITÉ: 
-1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0', '1/1', '1/0'). 
-2. Do poznámek (generalNotes) NEPIŠ věci, které už jsou v jiných polích (např. nepiš "leták" nebo barevnost, pokud už je to v 'description' nebo 'colors'). Poznámka obsahuje jen unikátní doplňující info.
-3. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
-
-Text poptávky: "${aiText}"`,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              customer: { type: Type.STRING },
-              jobName: { type: Type.STRING },
-              generalNotes: { type: Type.STRING },
-              address: { type: Type.STRING },
-              items: {
-                type: Type.ARRAY,
-                items: {
-                  type: Type.OBJECT,
-                  properties: {
-                    description: { type: Type.STRING },
-                    quantity: { type: Type.NUMBER },
-                    size: { type: Type.STRING },
-                    colors: { type: Type.STRING },
-                    paperType: { type: Type.STRING },
-                    paperWeight: { type: Type.STRING }
-                  }
-                }
-              }
-            }
-          }
-        }
-      });
-
-      if (response.text) {
-        const data = JSON.parse(response.text);
-        const newJob: JobData = {
-          id: Math.random().toString(36).substring(2, 11),
-          jobId: '',
-          customer: sanitize(data.customer),
-          jobName: sanitize(data.jobName),
-          address: sanitize(data.address),
-          dateReceived: new Date().toISOString().split('T')[0],
-          deadline: '',
-          technology: [],
-          status: JobStatus.INQUIRY,
-          position: getNewJobPosition(),
-          items: (data.items || []).map((it: any) => ({
-            id: Math.random().toString(36).substring(2, 11),
-            description: sanitize(it.description),
-            quantity: Number(it.quantity) || 0,
-            size: sanitize(it.size),
-            colors: sanitize(it.colors),
-            techSpecs: '',
-            stockFormat: '',
-            paperType: sanitize(it.paperType),
-            paperWeight: sanitize(it.paperWeight),
-            itemsPerSheet: '',
-            numberOfPages: 0
-          })) || [],
-          bindingType: '',
-          laminationType: '',
-          processing: '',
-          cooperation: '',
-          shippingNotes: '',
-          generalNotes: sanitize(data.generalNotes),
-          icon: 'FileText',
-          zIndex: Date.now()
-        };
-        setJobs(prev => [newJob, ...prev]);
-        setIsAiPanelOpen(false);
-        setAiText('');
-      }
-    } catch (e) {
-      alert('Chyba při AI analýze: ' + (e instanceof Error ? e.message : 'Neznámá chyba'));
-    } finally {
-      setIsAnalyzing(false);
-    }
   };
 
   const handleSmartGrouping = () => {
@@ -948,7 +843,6 @@ Text poptávky: "${aiText}"`,
             <FolderSync className="w-4 h-4 text-amber-400" />
             <span className="hidden lg:inline">Sdružit k Expresu</span>
           </button>
-          <button onClick={() => setIsAiPanelOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700"><Bot className="w-4 h-4 text-purple-400" /> <span className="hidden lg:inline">AI Import</span></button>
           <div className="flex items-center gap-2 ml-1">
             <button onClick={handleCreateNote} className="flex items-center justify-center p-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-900/40 active:scale-95 transition-all w-8 h-8 md:w-auto md:px-4 md:py-2">
               <StickyNote className="w-4 h-4" />
@@ -1006,25 +900,7 @@ Text poptávky: "${aiText}"`,
         ))}
       </main>
 
-      {isAiPanelOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[2147483647] flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-8 w-full max-w-xl shadow-2xl">
-            <h3 className="text-xl font-bold flex items-center gap-3 mb-6"><Sparkles className="w-6 h-6 text-purple-400" /> AI Import</h3>
-            <textarea className="w-full h-56 bg-slate-800 border border-slate-700 rounded-2xl p-5 text-sm text-slate-200 focus:ring-2 focus:ring-purple-500 outline-none resize-none" placeholder="Vložte text poptávky..." value={aiText} onChange={(e) => setAiText(e.target.value)} />
-            <div className="flex justify-end gap-4 mt-8">
-              <button onClick={() => setIsAiPanelOpen(false)} className="px-6 py-2.5 text-sm font-bold text-slate-500">ZRUŠIT</button>
-              <button
-                onClick={handleAiImport}
-                disabled={!aiText.trim() || isAnalyzing}
-                className="px-8 py-2.5 bg-purple-600 text-white rounded-xl text-sm font-black disabled:opacity-50 flex items-center gap-2"
-              >
-                {isAnalyzing && <Loader2 className="w-4 h-4 animate-spin" />}
-                IMPORT
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {isSettingsOpen && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[2147483647] flex items-center justify-center p-4">
