@@ -14,10 +14,10 @@ import { GoogleGenAI, Type } from '@google/genai';
 
 // Centrální fallback funkce pro Gemini
 const GEMINI_MODELS = [
-  'gemini-2.5-flash-preview-05-20',
+  'gemini-2.5-flash-lite',
   'gemini-2.0-flash-lite',
-  'gemini-1.5-flash-latest',
-  'gemini-1.5-flash-8b-latest',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
 ];
 
 async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
