@@ -373,7 +373,8 @@ const App: React.FC = () => {
     while (hasCollision && safetyCounter < 50) {
       hasCollision = false;
       for (const job of jobs) {
-        if (Math.abs(job.position.x - x) < 50 && Math.abs(job.position.y - y) < 50) {
+        // Kontrolujeme překryv karet (karty jsou w-48 ~ 192px, použijeme buffer 210px)
+        if (job.position && Math.abs(job.position.x - x) < 210 && Math.abs(job.position.y - y) < 210) {
           hasCollision = true;
           break;
         }
