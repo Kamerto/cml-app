@@ -7,7 +7,7 @@ import {
   Hash, MapPin, ChevronRight,
   Calendar, Building, FileText, Cpu, Sparkles, Bot, Loader2,
   CheckCircle2, List, Zap, Map, Settings, Wand2, Merge,
-  Maximize, Layers, Scissors, Truck, Mail, Link
+  Maximize, Layers, Scissors, Truck, Mail, Link, RefreshCw
 } from 'lucide-react';
 import EmailList from './EmailList';
 import { JobData, PrintItem, JobStatus } from '../types';
@@ -683,7 +683,7 @@ Text: "${aiInput}"`,
     } catch (e) { alert('Chyba AI.'); } finally { setIsAiFilling(false); }
   };
 
-  const handleAiFillSingleItem = async (itemId: string) => {
+  const handleAiFillSingleItem = async (itemId: string, mode: 'overwrite' | 'supplement') => {
     if (!itemAiText.trim()) return;
     setIsAiFilling(true);
 
@@ -729,20 +729,73 @@ Text: "${itemAiText}"`,
 
       if (response.text) {
         const data = JSON.parse(response.text);
-        setFormData(prev => ({
-          ...prev,
-          items: prev.items.map(it => it.id === itemId ? {
-            ...it,
-            description: sanitize(data.description),
-            quantity: Number(data.quantity) || 0,
-            size: sanitize(data.size),
-            colors: sanitize(data.colors),
-            paperType: sanitize(data.paperType),
-            paperWeight: sanitize(data.paperWeight),
-            techSpecs: sanitize(data.techSpecs),
-            numberOfPages: Number(data.numberOfPages) || 0
-          } : it)
-        }));
+
+        let localConflicts: string[] = [];
+
+        setFormData(prev => {
+          const currentItem = prev.items.find(it => it.id === itemId);
+          if (!currentItem) return prev;
+
+          const updateField = (key: keyof typeof currentItem, aiVal: any, isNumber: boolean = false) => {
+            if (mode === 'overwrite') return aiVal;
+
+            // Supplement mode
+            const currentVal = currentItem[key];
+            const isEmpty = currentVal === '' || currentVal === 0 || currentVal === null || currentVal === undefined;
+            const hasAiVal = aiVal !== '' && aiVal !== 0 && aiVal !== null && aiVal !== undefined;
+
+            if (isEmpty && hasAiVal) {
+              return aiVal;
+            } else if (!isEmpty && hasAiVal && String(currentVal) !== String(aiVal)) {
+              localConflicts.push(`${String(key)} (AI navrhla: ${aiVal})`);
+              return currentVal;
+            }
+            return currentVal;
+          };
+
+          const updatedItem = {
+            ...currentItem,
+            description: updateField('description', sanitize(data.description)),
+            quantity: updateField('quantity', Number(data.quantity) || 0, true),
+            size: updateField('size', sanitize(data.size)),
+            colors: updateField('colors', sanitize(data.colors)),
+            paperType: updateField('paperType', sanitize(data.paperType)),
+            paperWeight: updateField('paperWeight', sanitize(data.paperWeight)),
+            techSpecs: updateField('techSpecs', sanitize(data.techSpecs)),
+            numberOfPages: updateField('numberOfPages', Number(data.numberOfPages) || 0, true)
+          };
+
+          return {
+            ...prev,
+            items: prev.items.map(it => it.id === itemId ? updatedItem : it)
+          };
+        });
+
+        // Musíme vyhodnotit alert až mimo setFormData (stavovou smyčku)
+        if (mode === 'supplement' && localConflicts.length > 0) {
+          // Překlad klíčů pro srozumitelnější alert
+          const keyTranslations: Record<string, string> = {
+            description: 'Popis',
+            quantity: 'Náklad',
+            size: 'Formát',
+            colors: 'Barevnost',
+            paperType: 'Druh papíru',
+            paperWeight: 'Gramáž',
+            techSpecs: 'Doplňující info',
+            numberOfPages: 'Počet stran'
+          };
+
+          const translatedConflicts = localConflicts.map((c: string) => {
+            const kl = c.split(' ')[0];
+            if (keyTranslations[kl]) return c.replace(kl, keyTranslations[kl]);
+            return c;
+          });
+
+          setTimeout(() => {
+            alert(`Položka doplněna.\n\nPozor, následující údaje nebyly přepsány, protože už v nich něco bylo:\n- ${translatedConflicts.join('\n- ')}\n\nPokud je chcete nahradit, použijte tlačítko "Přepsat".`);
+          }, 100);
+        }
+
         setItemAiInputId(null);
         setItemAiText('');
       }
@@ -1105,20 +1158,31 @@ Text: "${itemAiText}"`,
                             <div className="flex items-center gap-2 mb-3 text-[10px] font-black text-amber-500 uppercase tracking-widest">
                               <Sparkles className="w-3 h-3" /> AI Specifikace této položky
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-3">
                               <textarea
-                                className="flex-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:ring-1 focus:ring-amber-500 outline-none resize-none min-h-[60px]"
+                                className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-xs text-slate-200 focus:ring-1 focus:ring-amber-500 outline-none resize-none min-h-[60px]"
                                 placeholder="Např: 200ks, křída mat 300g, barevnost 4/0, formát A5..."
                                 value={itemAiText}
                                 onChange={(e) => setItemAiText(e.target.value)}
                               />
-                              <button
-                                onClick={() => handleAiFillSingleItem(item.id)}
-                                disabled={!itemAiText.trim() || isAiFilling}
-                                className="px-4 bg-amber-600 hover:bg-amber-500 text-white rounded-xl transition-all disabled:opacity-50 flex items-center justify-center shadow-lg"
-                              >
-                                {isAiFilling ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronRight className="w-5 h-5" />}
-                              </button>
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={() => handleAiFillSingleItem(item.id, 'overwrite')}
+                                  disabled={!itemAiText.trim() || isAiFilling}
+                                  className="px-4 py-2.5 bg-rose-600 hover:bg-rose-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
+                                >
+                                  {isAiFilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+                                  Přepsat
+                                </button>
+                                <button
+                                  onClick={() => handleAiFillSingleItem(item.id, 'supplement')}
+                                  disabled={!itemAiText.trim() || isAiFilling}
+                                  className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg"
+                                >
+                                  {isAiFilling ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
+                                  Doplnit
+                                </button>
+                              </div>
                             </div>
                           </div>
                         )}
