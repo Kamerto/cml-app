@@ -273,7 +273,7 @@ EMAILY:
 ${mailsText}`;
       const genAI = new GoogleGenAI({ apiKey });
       const result = await genAI.models.generateContent({
-        model: 'gemini-2.0-flash',
+        model: 'gemini-3-flash-preview',
         contents: prompt,
       });
       const text = result.text || 'Nepodařilo se vygenerovat souhrn.';
