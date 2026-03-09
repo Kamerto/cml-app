@@ -58,8 +58,26 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
     }
   };
 
+  const isUrgent = React.useMemo(() => {
+    if (!job.deadline) return false;
+    try {
+      const d = new Date(job.deadline);
+      if (isNaN(d.getTime())) return false;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const deadlineDate = new Date(d);
+      deadlineDate.setHours(0, 0, 0, 0);
+      return deadlineDate.getTime() <= tomorrow.getTime();
+    } catch {
+      return false;
+    }
+  }, [job.deadline]);
+
   const getStyle = (): React.CSSProperties => {
-    if (job.status === JobStatus.READY_FOR_PROD) {
+    // If urgent, let getBgClass handle the red background unless it's READY_FOR_PROD with specific tech colors
+    if (job.status === JobStatus.READY_FOR_PROD && !isUrgent) {
       const hasOfset = job.technology?.includes('OFSET');
       const hasDigi = job.technology?.includes('DIGI');
 
@@ -75,6 +93,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
   };
 
   const getBgClass = () => {
+    if (isUrgent && !job.isFolder) return 'bg-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)] ring-2 ring-rose-400/50';
     if (job.status === JobStatus.READY_FOR_PROD) return '';
     if (job.isFolder) return 'bg-amber-600/90';
     return statusConfig?.color || 'bg-slate-700';
@@ -177,7 +196,14 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
 
       {/* Status Bar */}
       <div className={`pt-2 border-t border-white/10 shrink-0 mt-1`}>
-        <div className="flex justify-between bg-black/20 p-0.5 rounded-lg gap-0.5">
+        <div
+          className="flex justify-between bg-black/20 p-0.5 rounded-lg gap-0.5 overflow-hidden"
+          style={isUrgent && job.status === JobStatus.READY_FOR_PROD ? {
+            background: job.technology?.includes('OFSET') && job.technology?.includes('DIGI')
+              ? 'linear-gradient(to right, #f97316, #0ea5e9)'
+              : job.technology?.includes('OFSET') ? '#f97316' : '#0ea5e9'
+          } : {}}
+        >
           {COLUMNS.map(col => (
             <button
               key={col.id}
