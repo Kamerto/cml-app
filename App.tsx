@@ -4,12 +4,14 @@ import {
   Plus, Search, Sparkles,
   Settings, Bot, X, Printer, Trash2,
   Loader2, MapPin, Zap, Navigation,
-  Layers, Maximize, Minimize, FolderSync, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste
+  Layers, Maximize, Minimize, FolderSync, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste,
+  StickyNote
 } from 'lucide-react';
-import { JobData, JobStatus, PrintItem } from './types';
+import { JobData, JobStatus, PrintItem, BoardNoteData } from './types';
 import { INITIAL_JOBS } from './constants';
 import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
+import BoardNote from './components/BoardNote';
 import { GoogleGenAI, Type } from '@google/genai';
 
 // Centrální fallback funkce pro Gemini
@@ -42,7 +44,7 @@ async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
 }
 import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serverTimestamp, updateDoc, doc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
-import { auth, db, PUBLIC_ORDERS_COLLECTION, BOARD_CARDS_COLLECTION } from './firebase';
+import { auth, db, PUBLIC_ORDERS_COLLECTION, BOARD_CARDS_COLLECTION, BOARD_NOTES_COLLECTION } from './firebase';
 
 const EMAILS_COLLECTION = 'zakazka_emails';
 import LoginPage from './components/LoginPage';
@@ -52,6 +54,10 @@ const App: React.FC = () => {
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
+  });
+  const [notes, setNotes] = useState<BoardNoteData[]>(() => {
+    const saved = localStorage.getItem('cml_notes_v1');
+    return saved ? JSON.parse(saved) : [];
   });
   const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -73,6 +79,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('cml_jobs_v3', JSON.stringify(jobs));
   }, [jobs]);
+
+  useEffect(() => {
+    localStorage.setItem('cml_notes_v1', JSON.stringify(notes));
+  }, [notes]);
 
   useEffect(() => {
     if (MOCK_MODE) return;
@@ -165,6 +175,23 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
+    }
+  };
+
+  const saveNoteToFirebase = async (note: BoardNoteData) => {
+    try {
+      const noteRef = doc(db, BOARD_NOTES_COLLECTION, note.id);
+      await setDoc(noteRef, { ...note, lastUpdated: serverTimestamp() });
+    } catch (e) {
+      console.error('Chyba při ukládání poznámky:', e);
+    }
+  };
+
+  const deleteNoteFromFirebase = async (noteId: string) => {
+    try {
+      await deleteDoc(doc(db, BOARD_NOTES_COLLECTION, noteId));
+    } catch (e) {
+      console.error('Chyba při mazání poznámky:', e);
     }
   };
 
@@ -264,6 +291,42 @@ const App: React.FC = () => {
     const handleFsChange = () => setIsFullScreen(!!document.fullscreenElement);
     document.addEventListener('fullscreenchange', handleFsChange);
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
+  }, []);
+
+  // --- FIREBASE SYNC NOTES ---
+  useEffect(() => {
+    const q = query(collection(db, BOARD_NOTES_COLLECTION));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const changes = snapshot.docChanges();
+      if (changes.length === 0) return;
+
+      setNotes(currentNotes => {
+        let newNotes = [...currentNotes];
+        changes.forEach(change => {
+          const data = change.doc.data() as BoardNoteData;
+          const index = newNotes.findIndex(n => n.id === change.doc.id);
+
+          if (change.type === 'added') {
+            if (index === -1) {
+              newNotes.push({ ...data, id: change.doc.id });
+            }
+          }
+          if (change.type === 'modified') {
+            if (index !== -1) {
+              newNotes[index] = { ...data, id: change.doc.id };
+            }
+          }
+          if (change.type === 'removed') {
+            if (index !== -1) {
+              newNotes.splice(index, 1);
+            }
+          }
+        });
+        return newNotes;
+      });
+    });
+
+    return () => unsubscribe();
   }, []);
 
   // --- FIREBASE SYNC: Obousměrná synchronizace ---
@@ -675,10 +738,13 @@ Text poptávky: "${aiText}"`,
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const jobId = e.dataTransfer.getData('jobId');
+    const noteId = e.dataTransfer.getData('noteId');
     const rawOffsetX = e.dataTransfer.getData('offsetX');
     const rawOffsetY = e.dataTransfer.getData('offsetY');
 
-    if (!jobId || !rawOffsetX || !rawOffsetY) return;
+    if (!rawOffsetX || !rawOffsetY) return;
+
+    if (!jobId && !noteId) return;
 
     const offsetX = parseFloat(rawOffsetX);
     const offsetY = parseFloat(rawOffsetY);
@@ -687,8 +753,52 @@ Text poptávky: "${aiText}"`,
       const rect = workspaceRef.current.getBoundingClientRect();
       const x = e.clientX - rect.left - offsetX;
       const y = e.clientY - rect.top - offsetY;
-      setJobs(prev => prev.map(job => job.id === jobId ? { ...job, position: { x, y }, isNew: false } : job));
+
+      if (jobId) {
+        setJobs(prev => prev.map(job => job.id === jobId ? { ...job, position: { x, y }, isNew: false } : job));
+        const movedJob = jobs.find(j => j.id === jobId);
+        if (movedJob) saveToFirebase({ ...movedJob, position: { x, y }, isNew: false });
+      } else if (noteId) {
+        setNotes(prev => prev.map(note => note.id === noteId ? { ...note, position: { x, y } } : note));
+        const movedNote = notes.find(n => n.id === noteId);
+        if (movedNote) saveNoteToFirebase({ ...movedNote, position: { x, y } });
+      }
     }
+  };
+
+  const handleCreateNote = () => {
+    const pos = getNewJobPosition();
+    const newNote: BoardNoteData = {
+      id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      text: '',
+      position: pos,
+      zIndex: Date.now() % 1000000000
+    };
+    setNotes(prev => [...prev, newNote]);
+    saveNoteToFirebase(newNote);
+  };
+
+  const handleUpdateNote = (id: string, text: string) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, text } : n));
+    const note = notes.find(n => n.id === id);
+    if (note) saveNoteToFirebase({ ...note, text });
+  };
+
+  const handleDeleteNote = (id: string) => {
+    setNotes(prev => prev.filter(n => n.id !== id));
+    deleteNoteFromFirebase(id);
+  };
+
+  const handleBringNoteToFront = (id: string) => {
+    setNotes(prev => {
+      const note = prev.find(n => n.id === id);
+      if (!note) return prev;
+      const newZIndex = Date.now() % 1000000000;
+      if (note.zIndex === newZIndex) return prev;
+      const updatedNote = { ...note, zIndex: newZIndex };
+      saveNoteToFirebase(updatedNote);
+      return prev.map(n => n.id === id ? updatedNote : n);
+    });
   };
 
   const handleCreateJob = () => {
@@ -839,7 +949,13 @@ Text poptávky: "${aiText}"`,
             <span className="hidden lg:inline">Sdružit k Expresu</span>
           </button>
           <button onClick={() => setIsAiPanelOpen(true)} className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700"><Bot className="w-4 h-4 text-purple-400" /> <span className="hidden lg:inline">AI Import</span></button>
-          <button onClick={handleCreateJob} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black shadow-lg shadow-purple-900/40 active:scale-95 transition-all"><Plus className="w-4 h-4" /> NOVÁ ZAKÁZKA</button>
+          <div className="flex items-center gap-2 ml-1">
+            <button onClick={handleCreateNote} className="flex items-center justify-center p-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-900/40 active:scale-95 transition-all w-8 h-8 md:w-auto md:px-4 md:py-2">
+              <StickyNote className="w-4 h-4" />
+              <span className="hidden md:inline text-xs font-black">POZNÁMKA</span>
+            </button>
+            <button onClick={handleCreateJob} className="flex items-center gap-2 px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-black shadow-lg shadow-purple-900/40 active:scale-95 transition-all"><Plus className="w-4 h-4" /> NOVÁ ZAKÁZKA</button>
+          </div>
           <div className="w-px h-8 bg-slate-800 mx-1 hidden md:block"></div>
           <button
             onClick={handleLogout}
@@ -876,6 +992,16 @@ Text poptávky: "${aiText}"`,
             onDelete={handleDeleteJob}
             onStatusChange={handleStatusChangeOnBoard}
             onBringToFront={() => bringToFront(job.id)}
+          />
+        ))}
+
+        {notes.map(note => (
+          <BoardNote
+            key={note.id}
+            note={note}
+            onUpdate={handleUpdateNote}
+            onDelete={handleDeleteNote}
+            onBringToFront={() => handleBringNoteToFront(note.id)}
           />
         ))}
       </main>

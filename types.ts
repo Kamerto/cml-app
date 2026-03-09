@@ -62,6 +62,14 @@ export interface Column {
   accentColor: string;
 }
 
+export interface BoardNoteData {
+  id: string;
+  text: string;
+  position: { x: number; y: number };
+  zIndex?: number;
+  color?: string;
+}
+
 export interface JobEmail {
   id: string;
   zakazka_id: string;
