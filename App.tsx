@@ -800,8 +800,20 @@ const App: React.FC = () => {
     const id = (j.jobId || '').toLowerCase().trim();
     if (!id || id === '???' || id === 'id?' || id === 'null' || id === 'undefined') return false;
 
-    return (j.customer || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (j.jobName || '').toLowerCase().includes(searchQuery.toLowerCase());
+    if (!searchQuery) return true;
+
+    const query = searchQuery.toLowerCase();
+    const isNumericSearch = /\d/.test(query);
+
+    if (isNumericSearch) {
+      // Hledáme v čísle zakázky (jobId nebo outlookId)
+      return (j.jobId || '').toLowerCase().includes(query) ||
+        (j.outlookId || '').toLowerCase().includes(query);
+    } else {
+      // Hledáme v zákazníkovi nebo názvu zakázky
+      return (j.customer || '').toLowerCase().includes(query) ||
+        (j.jobName || '').toLowerCase().includes(query);
+    }
   });
 
   if (isAuthLoading) {
