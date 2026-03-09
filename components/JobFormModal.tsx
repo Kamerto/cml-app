@@ -415,6 +415,98 @@ ${mailsText}`,
     setSummaryGenerating(false);
   };
 
+  const handleFillProductionFromMails = async () => {
+    const chosen = summaryEmails.filter(e => summarySelected.has(e.id));
+    if (!chosen.length) return;
+    setSummaryGenerating(true);
+    try {
+      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
+      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
+        alert('Není nastaven API klíč.');
+        setSummaryGenerating(false);
+        return;
+      }
+      const mailsText = chosen.map((e, i) =>
+        `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
+      ).join('\n\n');
+      const sanitize = (val: any) => {
+        if (val === null || val === undefined) return '';
+        const s = String(val).trim();
+        return s.toLowerCase() === 'null' ? '' : s;
+      };
+      const ai_response = await geminiWithFallback(apiKey, {
+        contents: `Jsi asistent tiskárny. Z emailové konverzace níže vyextrahuj POUZE technické parametry výroby.
+DŮLEŽITÉ:
+1. Ber VŽDY nejnovější informace — pokud zákazník něco změnil, použij změnu.
+2. Ignoruj duplicitní citace — každou informaci zpracuj jen jednou.
+3. Pro barevnost používej technický zápis (např. '4/4', '4/0').
+4. Pokud pro pole nemáš data, použij prázdný řetězec "".
+5. Piš česky.
+
+EMAILY:
+${mailsText}`,
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              bindingType: { type: Type.STRING },
+              laminationType: { type: Type.STRING },
+              cooperation: { type: Type.STRING },
+              processing: { type: Type.STRING },
+              shippingNotes: { type: Type.STRING },
+              items: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    description: { type: Type.STRING },
+                    quantity: { type: Type.NUMBER },
+                    size: { type: Type.STRING },
+                    colors: { type: Type.STRING },
+                    paperType: { type: Type.STRING },
+                    paperWeight: { type: Type.STRING },
+                    techSpecs: { type: Type.STRING }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+      if (ai_response.text) {
+        const parsed = JSON.parse(ai_response.text);
+        const sanitizedData: any = {
+          bindingType: sanitize(parsed.bindingType),
+          laminationType: sanitize(parsed.laminationType),
+          cooperation: sanitize(parsed.cooperation),
+          processing: sanitize(parsed.processing),
+          shippingNotes: sanitize(parsed.shippingNotes),
+        };
+        if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
+          sanitizedData.items = parsed.items.map((it: any) => ({
+            id: Math.random().toString(36).substring(2, 11),
+            description: sanitize(it.description),
+            quantity: Number(it.quantity) || 0,
+            size: sanitize(it.size),
+            colors: sanitize(it.colors),
+            paperType: sanitize(it.paperType),
+            paperWeight: sanitize(it.paperWeight),
+            techSpecs: sanitize(it.techSpecs)
+          }));
+        }
+        setFormData(prev => ({ ...prev, ...sanitizedData }));
+        setShowMailSummary(false);
+        setSummaryText('');
+        setActiveTab('production');
+        alert('✅ Výroba vyplněna z mailů! Přepnuto na záložku Výroba.');
+      }
+    } catch (e: any) {
+      alert('Chyba při zpracování: ' + (e?.message || String(e)));
+    }
+    setSummaryGenerating(false);
+  };
+
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
     setFormData(prev => ({ ...prev, items: prev.items.map(i => i.id === id ? { ...i, [field]: val } : i) }));
   };
@@ -1578,6 +1670,14 @@ Text: "${itemAiText}"`,
                     className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black transition-all"
                   >
                     {summaryGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Zpracovávám...</> : <><Wand2 className="w-4 h-4" /> Vyplnit kartu z mailů ({summarySelected.size} mailů)</>}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleFillProductionFromMails}
+                    disabled={summaryGenerating || summarySelected.size === 0}
+                    className="w-full flex items-center justify-center gap-2 px-6 py-4 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-2xl font-black transition-all"
+                  >
+                    {summaryGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Zpracovávám...</> : <><Cpu className="w-4 h-4" /> Vyplnit výrobu ({summarySelected.size} mailů)</>}
                   </button>
 
                   {summaryText && (
