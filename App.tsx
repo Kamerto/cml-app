@@ -359,6 +359,34 @@ const App: React.FC = () => {
     }
   };
 
+  const getNewJobPosition = () => {
+    const ws = workspaceRef.current;
+    const scrollX = ws ? ws.scrollLeft : 0;
+    const scrollY = ws ? ws.scrollTop : 0;
+
+    let x = scrollX + 60;
+    let y = scrollY + 80;
+    let hasCollision = true;
+    let safetyCounter = 0;
+
+    // Pokud narazíme na jinou zakázku na stejné / blízké pozici, posuneme doprava o šířku karty (cca 240px)
+    while (hasCollision && safetyCounter < 50) {
+      hasCollision = false;
+      for (const job of jobs) {
+        if (Math.abs(job.position.x - x) < 50 && Math.abs(job.position.y - y) < 50) {
+          hasCollision = true;
+          break;
+        }
+      }
+      if (hasCollision) {
+        x += 240;
+        safetyCounter++;
+      }
+    }
+
+    return { x, y };
+  };
+
   const handleAiImport = async () => {
     if (!aiText.trim()) return;
     setIsAnalyzing(true);
@@ -427,7 +455,7 @@ Text poptávky: "${aiText}"`,
           deadline: '',
           technology: [],
           status: JobStatus.INQUIRY,
-          position: { x: 150, y: 150 },
+          position: getNewJobPosition(),
           items: (data.items || []).map((it: any) => ({
             id: Math.random().toString(36).substring(2, 11),
             description: sanitize(it.description),
@@ -663,11 +691,7 @@ Text poptávky: "${aiText}"`,
   };
 
   const handleCreateJob = () => {
-    // Umístíme novou zakázku vždy nahoru viditelné části workspace
-    const ws = workspaceRef.current;
-    const scrollX = ws ? ws.scrollLeft : 0;
-    const scrollY = ws ? ws.scrollTop : 0;
-    const pos = { x: scrollX + 60, y: scrollY + 80 };
+    const pos = getNewJobPosition();
 
     const tempId = `TEMP-${Date.now()}`;
     const newJob: JobData = {
