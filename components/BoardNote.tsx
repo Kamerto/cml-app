@@ -63,7 +63,7 @@ const BoardNote: React.FC<BoardNoteProps> = ({ note, onUpdate, onDelete, onBring
                     onChange={(e) => setText(e.target.value)}
                     onBlur={handleBlur}
                     placeholder="Napiš poznámku..."
-                    className="w-full h-full bg-transparent border-none outline-none resize-none text-slate-800 font-medium text-sm leading-relaxed placeholder:text-slate-800/40"
+                    className="w-full h-full bg-transparent border-none outline-none resize-none text-slate-800 font-medium text-base leading-relaxed placeholder:text-slate-800/40"
                     onMouseDown={(e) => {
                         // Allow clicking into the textarea without triggering drag
                         e.stopPropagation();
