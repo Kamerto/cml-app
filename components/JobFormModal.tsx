@@ -12,7 +12,7 @@ import {
 import EmailList from './EmailList';
 import { JobData, PrintItem, JobStatus } from '../types';
 import { PAPER_TYPES, BINDING_TYPES, LAMINA_TYPES, COLUMNS } from '../constants';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { GoogleGenAI, Type } from '@google/genai';
 
 // Centrální fallback funkce pro Gemini
@@ -505,6 +505,16 @@ ${mailsText}`,
       alert('Chyba při zpracování: ' + (e?.message || String(e)));
     }
     setSummaryGenerating(false);
+  };
+
+  const handleDeleteEmail = async (emailId: string) => {
+    if (!confirm('Opravdu chcete tento e-mail smazat z této zakázky?')) return;
+    try {
+      await deleteDoc(doc(db, SUMMARY_EMAILS_COLLECTION, emailId));
+      // No need to manually update state, onSnapshot will handle it
+    } catch (e: any) {
+      alert('Chyba při mazání e-mailu: ' + (e?.message || String(e)));
+    }
   };
 
   const updateItem = (id: string, field: keyof PrintItem, val: any) => {
@@ -1716,6 +1726,14 @@ Text: "${itemAiText}"`,
                         <p className="text-sm font-bold text-slate-200 truncate">{email.subject || '(bez předmětu)'}</p>
                         <p className="text-[11px] text-slate-400">{email.sender} · {email.received_at || email.created_at?.slice(0, 10)}</p>
                       </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); handleDeleteEmail(email.id); }}
+                        className="p-2 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all"
+                        title="Smazat email"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   ))}
 
