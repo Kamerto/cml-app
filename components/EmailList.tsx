@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { JobEmail } from '../types';
-import { Mail, Loader2, AlertTriangle, Copy, Check, Link, X, ChevronDown } from 'lucide-react';
+import { Mail, Loader2, AlertTriangle, Copy, Check, Link, X, ChevronDown, Trash2 } from 'lucide-react';
 
 const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true'
     ? 'zakazka_emails_sandbox'
@@ -145,6 +145,15 @@ const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
     const [emails, setEmails] = useState<JobEmail[]>([]);
     const [loading, setLoading] = useState(true);
     const [openEmail, setOpenEmail] = useState<JobEmail | null>(null);
+
+    const handleDeleteEmail = async (emailId: string) => {
+        if (!confirm('Opravdu chcete tento e-mail smazat z této zakázky?')) return;
+        try {
+            await deleteDoc(doc(db, EMAILS_COLLECTION, emailId));
+        } catch (e: any) {
+            alert('Chyba při mazání e-mailu: ' + (e?.message || String(e)));
+        }
+    };
 
     const linkId = outlookId || jobId;
 
@@ -294,6 +303,15 @@ const EmailList: React.FC<EmailListProps> = ({ jobId, outlookId }) => {
                                     CHYBÍ ID
                                 </div>
                             )}
+                            <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); handleDeleteEmail(email.id); }}
+                                className="flex items-center gap-1 px-3 py-2 text-[10px] font-black transition-all text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-xl"
+                                title="Smazat email"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                SMAZAT
+                            </button>
                         </div>
                     </div>
                 </div>
