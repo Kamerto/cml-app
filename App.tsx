@@ -706,18 +706,6 @@ const App: React.FC = () => {
     alert(`Seskupeno ${productionJobs.length} zakázek ve výrobě podle materiálu.`);
   };
 
-+
-+    setJobs(prev => prev.map(job => {
-+      if (resolvedPositions.has(job.id)) {
-+        const newPos = resolvedPositions.get(job.id)!;
-+        saveToFirebase({ ...job, position: newPos });
-+        return { ...job, position: newPos };
-+      }
-+      return job;
-+    }));
-+
-+    alert(`Seskupeno ${productionJobs.length} zakázek ve výrobě podle materiálu.`);
-+  };
 
    const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
