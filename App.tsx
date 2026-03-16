@@ -616,21 +616,110 @@ const App: React.FC = () => {
         // Pouze dotčeným zakázkám změníme pozici
         const row = Math.floor(idx / itemsPerRow);
         const col = idx % itemsPerRow;
-        return {
-          ...job,
-          position: {
-            x: startX + col * stepX,
-            y: startY + row * stepY
+       
+  const handleProductionGrouping = () => {
+    const productionJobs = jobs.filter(j => j.status === JobStatus.READY_FOR_PROD);
+
+    if (productionJobs.length === 0) {
+      alert("Žádné zakázky ve stavu 'Výroba' k seřazení.");
+      return;
+    }
+
+    // Group by material (paperType + paperWeight)
+    const materialGroups: Record<string, JobData[]> = {};
+    productionJobs.forEach(job => {
+      const item = job.items?.[0];
+      const material = item ? `${item.paperType || 'Neznámý'} ${item.paperWeight || ''}`.trim() : 'Bez materiálu';
+      if (!materialGroups[material]) materialGroups[material] = [];
+      materialGroups[material].push(job);
+    });
+
+    let movedCount = 0;
+    const resolvedPositions = new Map<string, { x: number, y: number }>();
+
+    // Grid settings
+    const startX = 100;
+    const startY = 600; // Place production section below inquiry/calculation
+    const gapX = 240;
+    const gapY = 240;
+    const itemsPerRow = 6;
+
+    let currentGlobalIdx = 0;
+
+    // Sort materials to have consistent order
+    const sortedMaterials = Object.keys(materialGroups).sort();
+
+    sortedMaterials.forEach(material => {
+      const group = materialGroups[material];
+      group.forEach(job => {
+        const row = Math.floor(currentGlobalIdx / itemsPerRow);
+        const col = currentGlobalIdx % itemsPerRow;
+
+        resolvedPositions.set(job.id, {
+          x: startX + (col * gapX),
+          y: startY + (row * gapY)
+        });
+        movedCount++;
+        currentGlobalIdx++;
+      });
+      // Add a small gap between groups by rounding up to next row if group is large, 
+      // or just continue for now for simplicity as they are visually grouped by material in the same grid.
+    });
+
+    // Collision avoidance for non-production jobs
+    jobs.forEach(job => {
+      if (job.status === JobStatus.READY_FOR_PROD) return;
+
+      let currentPos = job.position;
+      let hasCollision = true;
+      let safetyCounter = 0;
+
+      while (hasCollision && safetyCounter < 50) {
+        hasCollision = false;
+        for (const [_, newPos] of resolvedPositions.entries()) {
+          if (Math.abs(currentPos.x - newPos.x) < 200 && Math.abs(currentPos.y - newPos.y) < 200) {
+            hasCollision = true;
+            break;
           }
-        };
+        }
+        if (hasCollision) {
+          currentPos = { ...currentPos, y: currentPos.y + 240 };
+          safetyCounter++;
+        }
       }
-      return job; // Ostatní zůstanou kde jsou
+
+      if (safetyCounter > 0) {
+        resolvedPositions.set(job.id, currentPos);
+        movedCount++;
+      }
+    });
+
+    setJobs(prev => prev.map(job => {
+      if (resolvedPositions.has(job.id)) {
+        const newPos = resolvedPositions.get(job.id)!;
+        saveToFirebase({ ...job, position: newPos });
+        return { ...job, position: newPos };
+      }
+      return job;
     }));
 
-    alert(`Přerovnáno ${affectedJobs.length} zakázek patřících do rajónů EXPRES zásilek (${Array.from(expressDistricts).join(', ')}).`);
+    alert(`Seskupeno ${productionJobs.length} zakázek ve výrobě podle materiálu.`);
   };
 
-  const handleDrop = (e: React.DragEvent) => {
++
++    setJobs(prev => prev.map(job => {
++      if (resolvedPositions.has(job.id)) {
++        const newPos = resolvedPositions.get(job.id)!;
++        saveToFirebase({ ...job, position: newPos });
++        return { ...job, position: newPos };
++      }
++      return job;
++    }));
++
++    alert(`Seskupeno ${productionJobs.length} zakázek ve výrobě podle materiálu.`);
++  };
+
+   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const jobId = e.dataTransfer.getData('jobId');
     const noteId = e.dataTransfer.getData('noteId');
@@ -856,6 +945,10 @@ const App: React.FC = () => {
           <button onClick={handleSmartGrouping} title="Přesune vizuálně zakázky k Expres zakázkám stejného obvodu" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
             <FolderSync className="w-4 h-4 text-amber-400" />
             <span className="hidden lg:inline">Sdružit k Expresu</span>
+          </button>
+          <button onClick={handleProductionGrouping} title="Seskupí zakázky ve výrobě podle materiálu" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
+            <Layers className="w-4 h-4 text-orange-400" />
+            <span className="hidden lg:inline">Sdružit Výrobu</span>
           </button>
           <div className="flex items-center gap-2 ml-1">
             <button onClick={handleCreateNote} className="flex items-center justify-center p-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-900/40 active:scale-95 transition-all w-8 h-8 md:w-auto md:px-4 md:py-2">
