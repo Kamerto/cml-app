@@ -616,6 +616,19 @@ const App: React.FC = () => {
         // Pouze dotčeným zakázkám změníme pozici
         const row = Math.floor(idx / itemsPerRow);
         const col = idx % itemsPerRow;
+        const newPos = {
+          x: startX + col * stepX,
+          y: startY + row * stepY
+        };
+        // Uložíme do Firebase (nepovinné ale dobré pro sync)
+        saveToFirebase({ ...job, position: newPos });
+        return { ...job, position: newPos };
+      }
+      return job; // Ostatní zůstanou kde jsou
+    }));
+
+    alert(`Přerovnáno ${affectedJobs.length} zakázek patřících do rajónů EXPRES zásilek (${Array.from(expressDistricts).join(', ')}).`);
+  };
        
   const handleProductionGrouping = () => {
     const productionJobs = jobs.filter(j => j.status === JobStatus.READY_FOR_PROD);
