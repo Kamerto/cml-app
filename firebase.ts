@@ -18,7 +18,7 @@ const db = getFirestore(app);
 
 const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
 
-const PUBLIC_ORDERS_COLLECTION = 'orders_sandbox';
+const PUBLIC_ORDERS_COLLECTION = 'orders';
 const BOARD_CARDS_COLLECTION = MOCK_MODE ? 'cml_board_cards_sandbox' : 'cml_board_cards';
 const BOARD_NOTES_COLLECTION = MOCK_MODE ? 'cml_board_notes_sandbox' : 'cml_board_notes';
 const INVITES_COLLECTION = 'invites';
