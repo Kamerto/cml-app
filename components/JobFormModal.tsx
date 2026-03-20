@@ -58,7 +58,7 @@ const SUGGESTIONS = {
   size: ['SRA3', 'A3', 'A4', 'A5', 'A6', '90x50', '85x55', 'DL'],
   colors: ['4/4', '4/0', '1/1', '1/0', '4/1', '5/0'],
   paper: PAPER_TYPES,
-  weight: ['80g', '90g', '115g', '135g', '170g', '250g', '300g', '350g'],
+  weight: ['80g', '90g', '100g', '120g', '130g', '140g', '150g', '170g', '190g', '200g', '250g', '300g', '350g', '400g'],
   binding: BINDING_TYPES,
   lamination: LAMINA_TYPES,
   processing: ['Ořez', 'Lepení', 'Číslování', 'Bigování', 'Skládání', 'Děrování', 'Perforace'],
@@ -250,6 +250,8 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [showPrintEdit, setShowPrintEdit] = useState(false);
   const [extraPrintNote, setExtraPrintNote] = useState('');
   const [showMailSummary, setShowMailSummary] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  const [splittingItemId, setSplittingItemId] = useState<string | null>(null);
 
   // --- MAIL SUMMARY (inline) ---
   const SUMMARY_EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_emails_sandbox' : 'zakazka_emails';
@@ -297,10 +299,22 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
       where('zakazka_id', 'in', ids)
     );
     const unsub = onSnapshot(q, (snap) => {
-      const loaded = snap.docs.map(d => ({ id: d.id, ...d.data() })) as any[];
-      loaded.sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''));
-      setSummaryEmails(loaded);
-      setSummarySelected(new Set(loaded.map(e => e.id)));
+      const emails = snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any[];
+      // Seřadíme maily od nejnovějšího (robustnější parsování dat)
+      emails.sort((a, b) => {
+        const parseD = (val: any) => {
+          if (!val) return 0;
+          if (typeof val === 'string') {
+            if (val.includes('-')) return new Date(val).getTime();
+            const m = val.match(/(\d{1,2})\.\s*(\d{1,2})\.\s*(\d{4})/);
+            if (m) return new Date(`${m[3]}-${m[2]}-${m[1]}`).getTime();
+          }
+          return new Date(val).getTime() || 0;
+        };
+        return parseD(b.received_at || b.created_at) - parseD(a.received_at || a.created_at);
+      });
+      setSummaryEmails(emails);
+      setSummarySelected(new Set(emails.map(e => e.id)));
       setSummaryLoading(false);
     }, () => setSummaryLoading(false));
     return () => unsub();
@@ -323,8 +337,8 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
       ).join('\n\n');
       const prompt = `Jsi asistent tiskárny. Analyzuj tuto emailovou konverzaci k zakázce a vytvoř:
 
-1. ČASOVÁ OSA — stručně popiš co se kdy dělo (každý bod max 1-2 věty)
-2. AKTUÁLNÍ SOUHRN OBJEDNÁVKY — co si zákazník nakonec objednal se všemi změnami
+1. AKTUÁLNÍ SOUHRN OBJEDNÁVKY — co si zákazník nakonec objednal se všemi změnami
+2. ČASOVÁ OSA — stručně popiš co se kdy dělo, ŘAĎ OD NEJNOVĚJŠÍHO (nahoře) PO NEJSTARŠÍ (dole). (každý bod max 1-2 věty)
 
 Buď stručný a věcný. Piš česky.
 
@@ -374,9 +388,11 @@ ${mailsText}`;
 DŮLEŽITÉ:
 1. Ber VŽDY nejnovější informace — pokud zákazník něco změnil, použij změnu.
 2. Ignoruj duplicitní citace — každou informaci zpracuj jen jednou.
-3. Pro barevnost používej technický zápis (např. '4/4', '4/0').
-4. Pokud pro pole nemáš data, použij prázdný řetězec "".
-5. Piš česky.
+3. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+4. Pokud v textu najdeš dodací adresu, jméno kontaktní osoby nebo telefon, uveď je vše v poli 'address'. Formátuj to přehledně, např: 'Osoba: Jan Novák, Tel: +420 123 456 789, Adresa: Ulice 12, Město'.
+5. Do poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích (např. nepiš název tiskoviny nebo barevnost, pokud už je to v 'description' nebo 'colors'). Poznámka obsahuje JEN doplňující instrukce.
+6. Pokud pro pole nemáš data, použij prázdný řetězec "".
+7. Piš česky.
 
 EMAILY:
 ${mailsText}`,
@@ -463,13 +479,14 @@ ${mailsText}`,
         return s.toLowerCase() === 'null' ? '' : s;
       };
       const ai_response = await geminiWithFallback(apiKey, {
-        contents: `Jsi asistent tiskárny. Z emailové konverzace níže vyextrahuj POUZE technické parametry výroby.
+        contents: `Jsi asistent tiskárny. Z emailové konverzace níže vyextrahuj technické parametry výroby.
 DŮLEŽITÉ:
 1. Ber VŽDY nejnovější informace — pokud zákazník něco změnil, použij změnu.
-2. Ignoruj duplicitní citace — každou informaci zpracuj jen jednou.
-3. Pro barevnost používej technický zápis (např. '4/4', '4/0').
-4. Pokud pro pole nemáš data, použij prázdný řetězec "".
-5. Piš česky.
+2. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+3. Pokud v textu najdeš dodací adresu, jméno kontaktní osoby nebo telefon, uveď je vše v poli 'address'. Formátuj to přehledně, např: 'Osoba: Jan Novák, Tel: +420 123 456 789, Adresa: Ulice 12, Město'.
+4. Do poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích. Poznámka obsahuje JEN doplňující instrukce.
+5. Pokud pro pole nemáš data, použij prázdný řetězec "".
+6. Piš česky.
 
 EMAILY:
 ${mailsText}`,
@@ -482,6 +499,7 @@ ${mailsText}`,
               laminationType: { type: Type.STRING },
               cooperation: { type: Type.STRING },
               processing: { type: Type.STRING },
+              address: { type: Type.STRING },
               shippingNotes: { type: Type.STRING },
               items: {
                 type: Type.ARRAY,
@@ -509,6 +527,7 @@ ${mailsText}`,
           laminationType: sanitize(parsed.laminationType),
           cooperation: sanitize(parsed.cooperation),
           processing: sanitize(parsed.processing),
+          address: sanitize(parsed.address),
           shippingNotes: sanitize(parsed.shippingNotes),
         };
         if (parsed.items && Array.isArray(parsed.items) && parsed.items.length > 0) {
@@ -549,10 +568,18 @@ ${mailsText}`,
     setFormData(prev => ({ ...prev, items: prev.items.map(i => i.id === id ? { ...i, [field]: val } : i) }));
   };
 
+  const toggleItemSelection = (id: string) => {
+    setSelectedItemIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   const handleSave = (extraData = {}) => {
     let updatedData = { ...formData, ...extraData };
     if (!updatedData.outlookId) {
-      // Pokud jobId začíná SBX- nebo OUT-, použij ho jako outlookId
       if (updatedData.jobId && (updatedData.jobId.startsWith('SBX-') || updatedData.jobId.startsWith('OUT-'))) {
         updatedData.outlookId = updatedData.jobId;
       } else {
@@ -588,7 +615,26 @@ ${mailsText}`,
     }
   };
 
-  const handleMergeItems = (criteria: 'all' | 'format' | 'quantity') => {
+  const handleMergeItems = (criteria: 'all' | 'format' | 'quantity' | 'material' | 'selected') => {
+    if (criteria === 'selected') {
+      if (selectedItemIds.size < 2) {
+        alert('Pro ruční sdružení vyberte alespoň 2 položky.');
+        return;
+      }
+      const selected = formData.items.filter(it => selectedItemIds.has(it.id));
+      const unselected = formData.items.filter(it => !selectedItemIds.has(it.id));
+
+      const first = selected[0];
+      const totalQuantity = selected.reduce((sum, it) => sum + (it.quantity || 0), 0);
+      const combinedDescription = selected.map(it => `${it.description || 'Položka'} (${it.quantity}ks)`).join('\n');
+      const combinedSpecs = selected.map(it => it.techSpecs).filter(Boolean).join('\n');
+
+      const merged = { ...first, description: combinedDescription, quantity: totalQuantity, techSpecs: combinedSpecs };
+      setFormData(prev => ({ ...prev, items: [merged, ...unselected] }));
+      setSelectedItemIds(new Set());
+      return;
+    }
+
     const groups: Record<string, PrintItem[]> = {};
     formData.items.forEach(item => {
       let key = '';
@@ -598,6 +644,8 @@ ${mailsText}`,
         key = `${item.size}`.toLowerCase();
       } else if (criteria === 'quantity') {
         key = `${item.quantity}`;
+      } else if (criteria === 'material') {
+        key = `${item.paperType}-${item.paperWeight}`.toLowerCase();
       }
       if (!groups[key]) groups[key] = [];
       groups[key].push(item);
@@ -611,6 +659,86 @@ ${mailsText}`,
       return { ...first, description: combinedDescription, quantity: totalQuantity, techSpecs: combinedSpecs };
     });
     setFormData(prev => ({ ...prev, items: mergedItems }));
+  };
+
+  const handleSplitItem = async (itemId: string) => {
+    const item = formData.items.find(it => it.id === itemId);
+    if (!item) return;
+
+    const apiKey = localStorage.getItem('cml_gemini_key');
+    if (!apiKey) {
+      alert('Chybí Gemini API klíč v nastavení.');
+      return;
+    }
+
+    setSplittingItemId(itemId);
+    try {
+      const response = await geminiWithFallback(apiKey, {
+        contents: `Analyzuj tuto (pravděpodobně sdruženou) tiskovou položku a rozlož ji zpět na jednotlivé položky, pokud obsahuje více druhů (např. Vizitky a Letáky) nebo pokud popis naznačuje rozdělení (např. pomocí nových řádků nebo oddělovače '---').
+VŽDY vrať JSON pole objektů s touto strukturou:
+[
+  {
+    "description": string,
+    "quantity": number,
+    "size": string,
+    "colors": string,
+    "techSpecs": string,
+    "paperType": string,
+    "paperWeight": string,
+    "numberOfPages": number
+  }
+]
+
+DŮLEŽITÉ:
+1. Zachovej parametry jako papír, barevnost a formát pro každou novou položku (pokud se neliší).
+2. Rozděl náklad (quantity) správně podle popisu.
+3. Pokud položka není sdružená, vrať ji beze změny v poli s jedním prvkem.
+
+Položka k rozdělení:
+Popis: ${item.description}
+Náklad: ${item.quantity} ks
+Formát: ${item.size}
+Barevnost: ${item.colors}
+Papír: ${item.paperType} ${item.paperWeight}g
+Specifikace: ${item.techSpecs}`,
+        config: { responseMimeType: 'application/json' }
+      });
+
+      if (response.text) {
+        const splitItems = JSON.parse(response.text).map((it: any) => ({
+        ...it,
+        id: Math.random().toString(36).substring(2, 11),
+        stockFormat: item.stockFormat,
+        itemsPerSheet: item.itemsPerSheet
+      }));
+
+      setFormData(prev => {
+        const itemIndex = prev.items.findIndex(it => it.id === itemId);
+        if (itemIndex === -1) return prev;
+        const newItems = [...prev.items];
+        newItems.splice(itemIndex, 1, ...splitItems);
+        return { ...prev, items: newItems };
+      });
+    }
+  } catch (e: any) {
+      console.error('Split failed:', e);
+      alert('Rozdělení položky selhalo: ' + (e?.message || String(e)));
+    } finally {
+      setSplittingItemId(null);
+    }
+  };
+
+  const handleSplitSelectedItems = async () => {
+    const selectedIds = Array.from(selectedItemIds) as string[];
+    if (selectedIds.length === 0) return;
+
+    if (!confirm(`Opravdu chcete rozdělit ${selectedIds.length} označených položek pomocí AI?`)) return;
+
+    // Procházíme IDs a postupně spouštíme split
+    for (const itemId of selectedIds) {
+      await handleSplitItem(itemId);
+    }
+    setSelectedItemIds(new Set());
   };
 
   const toggleTechnology = (tech: 'DIGI' | 'OFSET') => {
@@ -653,11 +781,12 @@ ${mailsText}`,
         return;
       }
       const response = await geminiWithFallback(apiKey, {
-        contents: `Analýza technické části poptávky. 
-DŮLEŽITÉ: 
-1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0'). 
-2. Do poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích (např. nepiš název tiskoviny nebo barevnost, pokud už je to v 'description' nebo 'colors'). Poznámka obsahuje JEN doplňující instrukce.
-3. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
+        contents: `Analýza technické části poptávky.
+DŮLEŽITÉ:
+1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+2. Pokud v textu najdeš dodací adresu, jméno kontaktní osoby nebo telefon, uveď je vše v poli 'address'. Formátuj to přehledně, např: 'Osoba: Jan Novák, Tel: +420 123 456 789, Adresa: Ulice 12, Město'.
+3. Do poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích (např. nepiš název tiskoviny nebo barevnost, pokud už je to v 'description' nebo 'colors'). Poznámka obsahuje JEN doplňující instrukce.
+4. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
 
 Text: "${aiInput}"`,
         config: {
@@ -740,10 +869,10 @@ Text: "${aiInput}"`,
         return;
       }
       const response = await geminiWithFallback(apiKey, {
-        contents: `Analyzuj tento text a extrahuj specifikaci JEDNÉ tiskové položky do JSON. 
-DŮLEŽITÉ: 
-1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0'). 
-2. Do poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích. 
+        contents: `Analyzuj tento text a extrahuj specifikaci JEDNÉ tiskové položky do JSON.
+DŮLEŽITÉ:
+1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+2. Do poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích.
 3. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
 
 Text: "${itemAiText}"`,
@@ -929,6 +1058,7 @@ Text: "${itemAiText}"`,
         outlookId: '',
         tags: []
       });
+      setSelectedItemIds(new Set());
     }
   };
 
@@ -1144,6 +1274,9 @@ Text: "${itemAiText}"`,
                       <button onClick={() => handleMergeItems('all')} disabled={formData.items.length < 2} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-amber-500 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/20 hover:bg-amber-500/10 transition-all disabled:opacity-20" title="Sdruží položky se stejným papírem, formátem i barevností"><Merge className="w-3.5 h-3.5" /> Sdružit vše</button>
                       <button onClick={() => handleMergeItems('format')} disabled={formData.items.length < 2} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-amber-500 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/20 hover:bg-amber-500/10 transition-all disabled:opacity-20" title="Sdruží položky se stejným formátem"><Maximize className="w-3.5 h-3.5" /> Dle formátu</button>
                       <button onClick={() => handleMergeItems('quantity')} disabled={formData.items.length < 2} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-amber-500 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/20 hover:bg-amber-500/10 transition-all disabled:opacity-20" title="Sdruží položky se stejným nákladem"><Zap className="w-3.5 h-3.5" /> Dle nákladu</button>
+                      <button onClick={() => handleMergeItems('material')} disabled={formData.items.length < 2} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-amber-500 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/20 hover:bg-amber-500/10 transition-all disabled:opacity-20" title="Sdruží položky se stejným materiálem (papír + gramáž)"><Layers className="w-3.5 h-3.5" /> Dle materiálu</button>
+                      <button onClick={() => handleMergeItems('selected')} disabled={selectedItemIds.size < 2} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-emerald-500 bg-emerald-500/5 px-4 py-2.5 rounded-xl border border-emerald-500/20 hover:bg-emerald-500/10 transition-all disabled:opacity-20 shadow-lg shadow-emerald-950/20" title="Sdruží pouze ručně vybrané položky"><CheckCircle2 className="w-3.5 h-3.5" /> Sdružit označené ({selectedItemIds.size})</button>
+                      <button onClick={handleSplitSelectedItems} disabled={selectedItemIds.size === 0} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-rose-500 bg-rose-500/5 px-4 py-2.5 rounded-xl border border-rose-500/20 hover:bg-rose-500/10 transition-all disabled:opacity-20 shadow-lg shadow-rose-950/20" title="Rozloží vybrané sdružené položky pomocí AI"><Scissors className="w-3.5 h-3.5" /> Rozdělit označené ({selectedItemIds.size})</button>
                       <div className="w-px h-6 bg-slate-700 mx-1 hidden lg:block"></div>
                       <button onClick={() => setShowAiInput(!showAiInput)} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-amber-500 bg-amber-500/5 px-4 py-2.5 rounded-xl border border-amber-500/20 hover:bg-amber-500/10 transition-all"><Sparkles className="w-3.5 h-3.5" /> AI Pomocník</button>
                       <button onClick={addItem} className="flex items-center gap-2.5 text-[9px] font-black uppercase text-purple-400 bg-purple-400/5 px-4 py-2.5 rounded-xl border border-purple-500/20 hover:bg-purple-400/10 transition-all"><Plus className="w-4 h-4" /> Přidat položku</button>
@@ -1169,25 +1302,46 @@ Text: "${itemAiText}"`,
                     {formData.items.map((item, idx) => (
                       <div key={item.id} className={`bg-slate-800/40 border-2 rounded-3xl p-7 relative group transition-all duration-300 ${itemAiInputId === item.id ? 'border-amber-500 ring-4 ring-amber-500/10' : 'border-slate-700 hover:bg-slate-800/70 shadow-xl'}`}>
                         <div className="absolute top-4 right-4 flex items-center gap-2 z-30">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setItemAiInputId(itemAiInputId === item.id ? null : item.id); }}
-                            className={`p-1.5 rounded-lg transition-all ${itemAiInputId === item.id ? 'bg-amber-500 text-white shadow-lg' : 'text-amber-500 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20'}`}
-                            title="AI Upravit položku"
-                          >
-                            <Wand2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
-                            className="p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
-                            title="Smazat položku"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
+                          <div className="flex items-center mr-2">
+                             <input 
+                               type="checkbox" 
+                               id={`select-${item.id}`}
+                               checked={selectedItemIds.has(item.id)}
+                               onChange={() => toggleItemSelection(item.id)}
+                               className="w-5 h-5 rounded-md border-slate-700 bg-slate-900 text-emerald-600 focus:ring-emerald-500/50 cursor-pointer"
+                             />
+                           </div>
+                           <button
+                             onClick={(e) => { e.stopPropagation(); handleSplitItem(item.id); }}
+                             disabled={splittingItemId === item.id}
+                             className={`p-1.5 rounded-lg transition-all ${splittingItemId === item.id ? 'bg-slate-700' : 'text-slate-600 hover:text-emerald-400 hover:bg-emerald-400/10'}`}
+                             title="Rozdělit sdruženou položku pomocí AI"
+                           >
+                             {splittingItemId === item.id ? <Loader2 className="w-4 h-4 animate-spin text-emerald-400" /> : <Scissors className="w-4 h-4" />}
+                           </button>
+                           <button
+                             onClick={(e) => { e.stopPropagation(); setItemAiInputId(itemAiInputId === item.id ? null : item.id); }}
+                             className={`p-1.5 rounded-lg transition-all ${itemAiInputId === item.id ? 'bg-amber-500 text-white shadow-lg' : 'text-amber-500 hover:bg-amber-500/10 border border-transparent hover:border-amber-500/20'}`}
+                             title="AI Upravit položku"
+                           >
+                             <Wand2 className="w-4 h-4" />
+                           </button>
+                           <button
+                             onClick={(e) => { e.stopPropagation(); removeItem(item.id); }}
+                             className="p-1.5 text-slate-600 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all"
+                             title="Smazat položku"
+                           >
+                             <Trash2 className="w-4 h-4" />
+                           </button>
+                         </div>
 
                         <div className="flex items-start gap-4 mb-6">
-                          <span className="text-[10px] font-black bg-slate-900 text-slate-500 w-8 h-8 flex items-center justify-center rounded-xl border border-slate-700 shrink-0">#{idx + 1}</span>
-                          <div className="flex-1 pr-20">
+                           <label className="flex items-center gap-2 cursor-pointer group">
+                             <span className={`text-[10px] font-black w-8 h-8 flex items-center justify-center rounded-xl border transition-all ${selectedItemIds.has(item.id) ? 'bg-emerald-600 border-emerald-400 text-white shadow-lg' : 'bg-slate-900 border-slate-700 text-slate-500 group-hover:border-slate-500'}`}>
+                               #{idx + 1}
+                             </span>
+                           </label>
+                           <div className="flex-1 pr-20">
                             <SuggestionInput
                               label="Co je to za položku?"
                               value={item.description || ''}
@@ -1745,14 +1899,27 @@ Text: "${itemAiText}"`,
               </button>
             </header>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="bg-slate-800/20 px-6 py-4 border-b border-slate-700/50">
+              {summaryText ? (
+                <div className="p-4 bg-emerald-900/20 border border-emerald-500/30 rounded-2xl animate-in fade-in slide-in-from-top-2 duration-300">
+                  <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-2 flex items-center gap-2">
+                    <Sparkles className="w-3 h-3" /> Aktuální souhrn zakázky
+                  </p>
+                  <pre className="text-sm text-slate-200 whitespace-pre-wrap font-sans leading-relaxed">{summaryText}</pre>
+                </div>
+              ) : (
+                <p className="text-[10px] text-slate-500 uppercase font-black tracking-widest">Vyberte maily a stiskněte tlačítko pro vygenerování souhrnu</p>
+              )}
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar">
               {summaryLoading ? (
                 <div className="flex items-center gap-2 text-slate-500"><Loader2 className="w-4 h-4 animate-spin" /> Načítám maily...</div>
               ) : summaryEmails.length === 0 ? (
                 <p className="text-slate-500 text-sm">Žádné maily k dispozici.</p>
               ) : (
                 <>
-                  <p className="text-[11px] text-slate-500 uppercase font-black tracking-widest">Vyber maily pro souhrn</p>
+                  <p className="text-[11px] text-slate-500 uppercase font-black tracking-widest">Časová osa mailů (nejnovější nahoře)</p>
                   {summaryEmails.map(email => (
                     <div
                       key={email.id}
@@ -1802,12 +1969,6 @@ Text: "${itemAiText}"`,
                     {summaryGenerating ? <><Loader2 className="w-4 h-4 animate-spin" /> Zpracovávám...</> : <><Cpu className="w-4 h-4" /> Vyplnit výrobu ({summarySelected.size} mailů)</>}
                   </button>
 
-                  {summaryText && (
-                    <div className="p-5 bg-emerald-900/10 border border-emerald-500/20 rounded-2xl">
-                      <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-3">AI Souhrn</p>
-                      <pre className="text-sm text-slate-300 whitespace-pre-wrap font-sans leading-relaxed">{summaryText}</pre>
-                    </div>
-                  )}
                 </>
               )}
             </div>

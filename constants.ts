@@ -40,7 +40,7 @@ export const COLUMNS: Column[] = [
 
 export const INITIAL_JOBS: JobData[] = [];
 
-export const PAPER_TYPES = ['Křída Lesk', 'Křída Mat', 'Ofset', 'Samolepka', 'Grafický', 'Olin'];
+export const PAPER_TYPES = ['KM', 'KL', 'BO', 'Samo-lesk', 'Samo-mat', 'Plast'];
 export const BINDING_TYPES = ['Bez vazby', 'V1 na 2 skoby', 'V1 na 4 skoby', 'V1 s očky', 'V2 lepená', 'V4 šitá', 'V8 šitá v deskách', 'Kroužková', 'Twin-wire'];
 export const LAMINA_TYPES = ['Bez lamina', 'Lesk 1/0', 'Lesk 1/1', 'Mat 1/0', 'Mat 1/1', 'Matné Antiscratch 1/0', 'Matné Antiscratch 1/1', 'SoftTouch 1/0', 'SoftTouch 1/1'];
 export const ICONS = ['FileText', 'Printer', 'Sticker', 'Book', 'Package', 'Briefcase', 'Mail'];

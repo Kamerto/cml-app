@@ -35,7 +35,12 @@ async function parseEmailWithAI(preview, subject, sender) {
     }
 
     try {
-        const prompt = `Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+        const prompt = `Jsi asistent tiskárny. Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+DŮLEŽITÉ:
+1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+2. Do technických poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích (např. nepiš název tiskoviny nebo barevnost, pokud už je to v 'description' nebo 'colors').
+3. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
+
 Subject: ${subject}
 Text: ${preview}
 
@@ -43,7 +48,7 @@ JSON formát:
 {
   "customer": "jméno zákazníka",
   "jobName": "stručný název zakázky",
-  "items": [{"description": "popis", "quantity": 100}]
+  "items": [{"description": "popis", "quantity": 100, "colors": "4/4", "techSpecs": ""}]
 }`;
 
         const genAI = new GoogleGenAI({ apiKey });

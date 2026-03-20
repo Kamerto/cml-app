@@ -24,7 +24,12 @@ async function parseEmailWithAI(preview: string, subject: string, sender: string
     }
 
     try {
-        const prompt = `Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+        const prompt = `Jsi asistent tiskárny. Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+DŮLEŽITÉ:
+1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+2. Do technických poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích (např. nepiš název tiskoviny nebo barevnost, pokud už je to v 'description' nebo 'colors').
+3. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
+
 Subject: ${subject}
 Text: ${preview}
 
@@ -32,7 +37,7 @@ JSON formát:
 {
   "customer": "jméno zákazníka",
   "jobName": "stručný název zakázky",
-  "items": [{"description": "popis", "quantity": 100}]
+  "items": [{"description": "popis", "quantity": 100, "colors": "4/4", "techSpecs": ""}]
 }`;
 
         const genAI = new GoogleGenAI({ apiKey });
@@ -66,13 +71,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         let targetJobId = zakazka_id;
 
+        // Detekce módu (sandbox vs produkce)
+        const isSandbox = process.env.VITE_MOCK_MODE === 'true';
+        const cardsCollection = isSandbox ? 'cml_board_cards_sandbox' : 'cml_board_cards';
+        const emailsCollection = isSandbox ? 'zakazka_emails_sandbox' : 'zakazka_emails';
+
         // Pokud chybí ID zakázky, zkusíme ji vytvořit přes AI
         if (!targetJobId) {
             console.log('✨ Zakázka nemá ID, tvořím novou přes AI...');
             const aiData = await parseEmailWithAI(preview || '', subject, sender || '');
 
+            const idPrefix = isSandbox ? 'SBX' : 'OUT';
+            const generatedOutlookId = `${idPrefix}-${Math.floor(Date.now() / 1000)}`;
+
             const newJob = {
-                jobId: `OUT-${Math.floor(Date.now() / 100000)}`,
+                jobId: '',
+                outlookId: generatedOutlookId,
                 customer: aiData.customer,
                 jobName: aiData.jobName,
                 status: 'Poptávka',
@@ -84,25 +98,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                     size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0
                 })),
                 position: { x: 100, y: 100 },
-                isTracked: false, // NOVÉ: Nezobrazovat hned ve frontě na cestě
+                isTracked: false, 
                 entry_id: entry_id,
                 store_id: store_id || '',
                 created_at: FieldValue.serverTimestamp()
             };
 
-            await db.collection('cml_board_cards').add(newJob);
-            targetJobId = newJob.jobId;
+            await db.collection(cardsCollection).add(newJob);
+            targetJobId = generatedOutlookId; 
             console.log('✅ Vytvořena nová karta:', targetJobId);
         } else {
-            // Pokud ID máme, ověříme existenci
-            const ordersSnapshot = await db.collection('orders_sandbox')
-                .where('jobId', '==', targetJobId)
-                .limit(1)
-                .get();
-
-            if (ordersSnapshot.empty) {
-                return res.status(404).json({ error: `Job with ID ${targetJobId} not found` });
+            // Pokud ID máme, ověříme existenci v BOARD kolekci
+            // 1. Nejprve zkusíme outlookId
+            let snap = await db.collection(cardsCollection).where('outlookId', '==', targetJobId).limit(1).get();
+            
+            // 2. Pokud nic, zkusíme jobId
+            if (snap.empty) {
+                snap = await db.collection(cardsCollection).where('jobId', '==', targetJobId).limit(1).get();
             }
+
+            if (snap.empty) {
+                return res.status(404).json({ error: `Job with ID ${targetJobId} not found in ${cardsCollection}` });
+            }
+
+            // Použijeme outlookId z dokumentu pokud existuje (pro trvalé párování)
+            targetJobId = snap.docs[0].data().outlookId || targetJobId;
         }
 
         // Uložení e-mailu
@@ -116,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             created_at: new Date().toISOString(),
         };
 
-        const emailRef = await db.collection('zakazka_emails').add(emailData);
+        const emailRef = await db.collection(emailsCollection).add(emailData);
 
         return res.status(200).json({
             success: true,

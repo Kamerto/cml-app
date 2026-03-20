@@ -27,7 +27,12 @@ async function parseEmailWithAI(preview: string, subject: string, sender: string
     }
 
     try {
-        const prompt = `Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+        const prompt = `Jsi asistent tiskárny. Analyzuj tento e-mail a vrať stručný JSON tiskové zakázky CML.
+DŮLEŽITÉ:
+1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
+2. Do technických poznámek (techSpecs) NEPIŠ věci, které už jsou v jiných polích (např. nepiš název tiskoviny nebo barevnost, pokud už je to v 'description' nebo 'colors').
+3. Pokud pro pole nemáš data, použij prázdný řetězec "", nikdy nevracej "null" nebo null.
+
 Subject: ${subject}
 Text: ${preview}
 
@@ -35,7 +40,7 @@ JSON formát:
 {
   "customer": "jméno zákazníka",
   "jobName": "stručný název zakázky",
-  "items": [{"description": "popis", "quantity": 100}]
+  "items": [{"description": "popis", "quantity": 100, "colors": "4/4", "techSpecs": ""}]
 }`;
 
         const genAI = new GoogleGenAI({ apiKey });
@@ -98,14 +103,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             targetJobId = newJob.jobId;
             console.log('✅ [SANDBOX] Vytvořena karta:', targetJobId);
         } else {
-            const snap = await db.collection(SANDBOX_BOARD)
-                .where('jobId', '==', targetJobId)
+            // 1. Zkusíme outlookId
+            let snap = await db.collection(SANDBOX_BOARD)
+                .where('outlookId', '==', targetJobId)
                 .limit(1)
                 .get();
+            
+            // 2. Pokud nic, zkusíme jobId
+            if (snap.empty) {
+                snap = await db.collection(SANDBOX_BOARD)
+                    .where('jobId', '==', targetJobId)
+                    .limit(1)
+                    .get();
+            }
 
             if (snap.empty) {
                 return res.status(404).json({ error: `[SANDBOX] Job ${targetJobId} not found` });
             }
+
+            // Použijeme outlookId z dokumentu pokud existuje
+            targetJobId = snap.docs[0].data().outlookId || targetJobId;
         }
 
         const emailData = {

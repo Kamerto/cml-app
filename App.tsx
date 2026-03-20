@@ -46,11 +46,11 @@ import { onSnapshot, collection, query, addDoc, deleteDoc, getDocs, where, serve
 import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import { auth, db, PUBLIC_ORDERS_COLLECTION, BOARD_CARDS_COLLECTION, BOARD_NOTES_COLLECTION } from './firebase';
 
-const EMAILS_COLLECTION = 'zakazka_emails';
+const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_emails_sandbox' : 'zakazka_emails';
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.7.13-UNIFIED';
+  const VERSION = 'v2.8.0-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -257,8 +257,7 @@ const App: React.FC = () => {
       const job = prev.find(j => j.id === id);
       if (!job) return prev;
 
-      // CSS max z-index is ~2.1 billion. Cap timestamps to 1 billion.
-      const newZIndex = Date.now() % 1000000000;
+      const newZIndex = Date.now();
       if (job.zIndex === newZIndex) return prev;
 
       const updatedJob = { ...job, zIndex: newZIndex };
@@ -268,19 +267,25 @@ const App: React.FC = () => {
   };
 
   // Aktualizuje zakazka_id v emailech když se TEMP ID změní na reálné
-  const updateEmailsJobId = async (oldJobId: string, newJobId: string) => {
+  const updateEmailsJobId = async (oldJobId: string, newJobId: string, outlookId?: string) => {
     if (!oldJobId || !newJobId || oldJobId === newJobId) return;
     try {
       const { getDocs: _getDocs, updateDoc: _updateDoc, query: _query, collection: _collection, where: _where } = await import('firebase/firestore');
+      
+      // Hledáme maily pro staré ID
       const q = _query(_collection(db, EMAILS_COLLECTION), _where('zakazka_id', '==', oldJobId));
       const snapshot = await _getDocs(q);
-      const updates = snapshot.docs.map(doc => _updateDoc(doc.ref, { zakazka_id: newJobId }));
+      
+      // Propojíme je na nové ID (prioritně outlookId, pokud je k dispozici)
+      const targetId = outlookId || newJobId;
+      const updates = snapshot.docs.map(doc => _updateDoc(doc.ref, { zakazka_id: targetId }));
+      
       await Promise.all(updates);
       if (updates.length > 0) {
-        console.log(`✉️ Přepojena ${updates.length} e-mailů: ${oldJobId} → ${newJobId}`);
+        console.log(`✉️ Přepojena ${updates.length} e-mailů: ${oldJobId} → ${targetId}`);
       }
     } catch (e) {
-      console.error('Chyba při přepojování e-mailů:', e);
+      console.error('Chyba při přepojování e-mailů:', e, 'Col:', EMAILS_COLLECTION);
     }
   };
 
@@ -340,6 +345,7 @@ const App: React.FC = () => {
       setJobs(currentJobs => {
         let newJobs = [...currentJobs];
         let hasChanges = false;
+        const batchPositions: { x: number, y: number }[] = [];
 
         changes.forEach(change => {
           const data = change.doc.data() as JobData;
@@ -353,20 +359,24 @@ const App: React.FC = () => {
           if (change.type === 'added') {
             if (index === -1) {
               // NOVÁ ZAKÁZKA (přišla z webhooku/jiného klienta)
-              // Musíme zajistit, že má všechny potřebné fieldy pro UI
+              // Pokud nemá pozici (nebo má výchozí 100,100), vypočítáme jí tak, aby nepřekryla stávající
+              const isDefaultPos = data.position && Math.abs(data.position.x - 100) < 5 && Math.abs(data.position.y - 100) < 5;
+              const finalPos = (!data.position || isDefaultPos) ? getNewJobPosition(batchPositions, newJobs) : data.position;
+              batchPositions.push(finalPos);
+
               const newJob: JobData = {
                 ...data,
                 fireId: change.doc.id,
                 id: Math.random().toString(36).substring(2, 11), // Vygenerujeme lokální ID pro React key
                 // Pokud chybí, doplníme defaulty
                 status: data.status || JobStatus.INQUIRY,
-                position: data.position || { x: 100, y: 100 },
+                position: finalPos,
                 items: data.items || [],
                 technology: data.technology || [],
                 dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
                 zIndex: data.zIndex || Date.now()
               };
-              newJobs = [newJob, ...newJobs]; // Přidáme na začátek
+              newJobs = [...newJobs, newJob]; // Přidáme na konec (aby byla v DOMu později a tedy nahoře)
               hasChanges = true;
               console.log('📥 Stažena nová zakázka z Firebase:', data.jobId || change.doc.id);
             }
@@ -407,6 +417,53 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // --- SYNC: Sledování stavu výroby z fronty (orders) zpět na Tabuli ---
+  useEffect(() => {
+    const q = query(collection(db, PUBLIC_ORDERS_COLLECTION));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log('🔍 Orders snapshot:', snapshot.docChanges().length, 'změn');
+      const changes = snapshot.docChanges();
+      if (changes.length === 0) return;
+
+      setJobs(currentJobs => {
+        let newJobs = [...currentJobs];
+        let hasChanges = false;
+
+        changes.forEach(change => {
+          if (change.type !== 'modified' && change.type !== 'added') return;
+
+          const data = change.doc.data() as any;
+          const incomingStage = data.currentStage;
+          const incomingFireId = data.fireId || change.doc.id;
+
+          if (!incomingStage) return;
+
+          // Najdeme odpovídající kartu na tabuli podle fireId
+          const index = newJobs.findIndex(j => j.fireId === incomingFireId);
+          if (index === -1) return;
+
+          const current = newJobs[index];
+
+          // Aktualizujeme jen pokud se stage skutečně změnil
+          if (current.trackingStage === incomingStage) return;
+
+          newJobs[index] = {
+            ...current,
+            trackingStage: incomingStage,
+            isTracked: true,
+          };
+          hasChanges = true;
+          console.log(`🔄 Tracking sync: ${current.jobId} → ${incomingStage}`);
+        });
+
+        return hasChanges ? newJobs : currentJobs;
+      });
+    });
+
+    return () => unsubscribe();
+  }, []);
+
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
       document.documentElement.requestFullscreen().catch(err => {
@@ -419,7 +476,7 @@ const App: React.FC = () => {
     }
   };
 
-  const getNewJobPosition = () => {
+  const getNewJobPosition = (extraPositions: { x: number, y: number }[] = [], checkJobs: JobData[] = jobs) => {
     const ws = workspaceRef.current;
     const scrollX = ws ? ws.scrollLeft : 0;
     const scrollY = ws ? ws.scrollTop : 0;
@@ -429,18 +486,31 @@ const App: React.FC = () => {
     let hasCollision = true;
     let safetyCounter = 0;
 
-    // Pokud narazíme na jinou zakázku na stejné / blízké pozici, posuneme doprava o šířku karty (cca 240px)
+    // Pokud narazíme na jinou zakázku na stejné / blízké pozici, posuneme diagonálně (trochu odskočená karta)
     while (hasCollision && safetyCounter < 50) {
       hasCollision = false;
-      for (const job of jobs) {
-        // Kontrolujeme překryv karet (karty jsou w-48 ~ 192px, použijeme buffer 210px)
-        if (job.position && Math.abs(job.position.x - x) < 210 && Math.abs(job.position.y - y) < 210) {
+
+      // Kontrola proti zadaným zakázkám (v snapshotu to jsou ty nové, jinde ty aktuální ze state)
+      for (const job of checkJobs) {
+        if (job.position && Math.abs(job.position.x - x) < 25 && Math.abs(job.position.y - y) < 25) {
           hasCollision = true;
           break;
         }
       }
+
+      // Kontrola proti nově přidávaným v této dávce
+      if (!hasCollision) {
+        for (const pos of extraPositions) {
+          if (Math.abs(pos.x - x) < 25 && Math.abs(pos.y - y) < 25) {
+            hasCollision = true;
+            break;
+          }
+        }
+      }
+
       if (hasCollision) {
-        x += 240;
+        x += 40; // O něco větší diagonální posun, aby to bylo víc vidět (z 35 na 40 px)
+        y += 40;
         safetyCounter++;
       }
     }
@@ -620,8 +690,6 @@ const App: React.FC = () => {
           x: startX + col * stepX,
           y: startY + row * stepY
         };
-        // Uložíme do Firebase (nepovinné ale dobré pro sync)
-        saveToFirebase({ ...job, position: newPos });
         return { ...job, position: newPos };
       }
       return job; // Ostatní zůstanou kde jsou
@@ -629,98 +697,8 @@ const App: React.FC = () => {
 
     alert(`Přerovnáno ${affectedJobs.length} zakázek patřících do rajónů EXPRES zásilek (${Array.from(expressDistricts).join(', ')}).`);
   };
-       
-  const handleProductionGrouping = () => {
-    const productionJobs = jobs.filter(j => j.status === JobStatus.READY_FOR_PROD);
 
-    if (productionJobs.length === 0) {
-      alert("Žádné zakázky ve stavu 'Výroba' k seřazení.");
-      return;
-    }
-
-    // Group by material (paperType + paperWeight)
-    const materialGroups: Record<string, JobData[]> = {};
-    productionJobs.forEach(job => {
-      const item = job.items?.[0];
-      const material = item ? `${item.paperType || 'Neznámý'} ${item.paperWeight || ''}`.trim() : 'Bez materiálu';
-      if (!materialGroups[material]) materialGroups[material] = [];
-      materialGroups[material].push(job);
-    });
-
-    let movedCount = 0;
-    const resolvedPositions = new Map<string, { x: number, y: number }>();
-
-    // Grid settings
-    const startX = 100;
-    const startY = 600; // Place production section below inquiry/calculation
-    const gapX = 240;
-    const gapY = 240;
-    const itemsPerRow = 6;
-
-    let currentGlobalIdx = 0;
-
-    // Sort materials to have consistent order
-    const sortedMaterials = Object.keys(materialGroups).sort();
-
-    sortedMaterials.forEach(material => {
-      const group = materialGroups[material];
-      group.forEach(job => {
-        const row = Math.floor(currentGlobalIdx / itemsPerRow);
-        const col = currentGlobalIdx % itemsPerRow;
-
-        resolvedPositions.set(job.id, {
-          x: startX + (col * gapX),
-          y: startY + (row * gapY)
-        });
-        movedCount++;
-        currentGlobalIdx++;
-      });
-      // Add a small gap between groups by rounding up to next row if group is large, 
-      // or just continue for now for simplicity as they are visually grouped by material in the same grid.
-    });
-
-    // Collision avoidance for non-production jobs
-    jobs.forEach(job => {
-      if (job.status === JobStatus.READY_FOR_PROD) return;
-
-      let currentPos = job.position;
-      let hasCollision = true;
-      let safetyCounter = 0;
-
-      while (hasCollision && safetyCounter < 50) {
-        hasCollision = false;
-        for (const [_, newPos] of resolvedPositions.entries()) {
-          if (Math.abs(currentPos.x - newPos.x) < 200 && Math.abs(currentPos.y - newPos.y) < 200) {
-            hasCollision = true;
-            break;
-          }
-        }
-        if (hasCollision) {
-          currentPos = { ...currentPos, y: currentPos.y + 240 };
-          safetyCounter++;
-        }
-      }
-
-      if (safetyCounter > 0) {
-        resolvedPositions.set(job.id, currentPos);
-        movedCount++;
-      }
-    });
-
-    setJobs(prev => prev.map(job => {
-      if (resolvedPositions.has(job.id)) {
-        const newPos = resolvedPositions.get(job.id)!;
-        saveToFirebase({ ...job, position: newPos });
-        return { ...job, position: newPos };
-      }
-      return job;
-    }));
-
-    alert(`Seskupeno ${productionJobs.length} zakázek ve výrobě podle materiálu.`);
-  };
-
-
-   const handleDrop = (e: React.DragEvent) => {
+  const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const jobId = e.dataTransfer.getData('jobId');
     const noteId = e.dataTransfer.getData('noteId');
@@ -757,7 +735,7 @@ const App: React.FC = () => {
       id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       text: '',
       position: pos,
-      zIndex: Date.now() % 1000000000
+      zIndex: Date.now()
     };
     setNotes(prev => [...prev, newNote]);
     saveNoteToFirebase(newNote);
@@ -778,7 +756,7 @@ const App: React.FC = () => {
     setNotes(prev => {
       const note = prev.find(n => n.id === id);
       if (!note) return prev;
-      const newZIndex = Date.now() % 1000000000;
+      const newZIndex = Date.now();
       if (note.zIndex === newZIndex) return prev;
       const updatedNote = { ...note, zIndex: newZIndex };
       saveNoteToFirebase(updatedNote);
@@ -809,14 +787,14 @@ const App: React.FC = () => {
     // Pokud se mění z TEMP ID na reálné, přepojujeme emaily
     const previousJob = jobs.find(j => j.id === data.id);
     if (previousJob && previousJob.jobId !== data.jobId) {
-      updateEmailsJobId(previousJob.jobId, data.jobId);
+      updateEmailsJobId(previousJob.jobId, data.jobId, data.outlookId);
     }
 
     // 1. Lokální update (optimistický)
     setJobs(prev => {
       const exists = prev.find(j => j.id === data.id);
       if (exists) return prev.map(j => j.id === data.id ? { ...data, isNew: false } : j);
-      return [{ ...data, isNew: true }, ...prev];
+      return [...prev, { ...data, isNew: true }]; // Přidáme na konec
     });
 
     // 2. Uložení do Firebase (na pozadí)
@@ -946,10 +924,6 @@ const App: React.FC = () => {
           <button onClick={handleSmartGrouping} title="Přesune vizuálně zakázky k Expres zakázkám stejného obvodu" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
             <FolderSync className="w-4 h-4 text-amber-400" />
             <span className="hidden lg:inline">Sdružit k Expresu</span>
-          </button>
-          <button onClick={handleProductionGrouping} title="Seskupí zakázky ve výrobě podle materiálu" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
-            <Layers className="w-4 h-4 text-orange-400" />
-            <span className="hidden lg:inline">Sdružit Výrobu</span>
           </button>
           <div className="flex items-center gap-2 ml-1">
             <button onClick={handleCreateNote} className="flex items-center justify-center p-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-900/40 active:scale-95 transition-all w-8 h-8 md:w-auto md:px-4 md:py-2">
