@@ -360,27 +360,45 @@ const App: React.FC = () => {
 
           if (change.type === 'added') {
             if (index === -1) {
-              // NOVÁ ZAKÁZKA (přišla z webhooku/jiného klienta)
-              // Pokud nemá pozici (nebo má výchozí 100,100), vypočítáme jí tak, aby nepřekryla stávající
-              const isDefaultPos = data.position && Math.abs(data.position.x - 100) < 5 && Math.abs(data.position.y - 100) < 5;
-              const finalPos = (!data.position || isDefaultPos) ? getNewJobPosition(batchPositions, newJobs) : data.position;
-              batchPositions.push(finalPos);
+              // Zkusíme najít duplicitu podle jobId (zabráníme dvojitým kartám)
+              const jobIdIndex = newJobs.findIndex(j => j.jobId === data.jobId);
+              if (jobIdIndex !== -1) {
+                // Karta už existuje - jen aktualizujeme fireId a data
+                newJobs[jobIdIndex] = { 
+                  ...newJobs[jobIdIndex], 
+                  ...data, 
+                  fireId: change.doc.id, 
+                  id: newJobs[jobIdIndex].id,
+                  isNew: newJobs[jobIdIndex].isNew,
+                  trackingStage: data.trackingStage || newJobs[jobIdIndex].trackingStage,
+                  isTracked: data.isTracked ?? newJobs[jobIdIndex].isTracked,
+                  position: newJobs[jobIdIndex].position, // Zachováme lokální pozici
+                };
+                hasChanges = true;
+                console.log('🔗 Propojeno fireId pro existující zakázku:', data.jobId, '→', change.doc.id);
+              } else {
+                // NOVÁ ZAKÁZKA (přišla z webhooku/jiného klienta)
+                // Pokud nemá pozici (nebo má výchozí 100,100), vypočítáme jí tak, aby nepřekryla stávající
+                const isDefaultPos = data.position && Math.abs(data.position.x - 100) < 5 && Math.abs(data.position.y - 100) < 5;
+                const finalPos = (!data.position || isDefaultPos) ? getNewJobPosition(batchPositions, newJobs) : data.position;
+                batchPositions.push(finalPos);
 
-              const newJob: JobData = {
-                ...data,
-                fireId: change.doc.id,
-                id: Math.random().toString(36).substring(2, 11), // Vygenerujeme lokální ID pro React key
-                // Pokud chybí, doplníme defaulty
-                status: data.status || JobStatus.INQUIRY,
-                position: finalPos,
-                items: data.items || [],
-                technology: data.technology || [],
-                dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
-                zIndex: data.zIndex || Date.now()
-              };
-              newJobs = [...newJobs, newJob]; // Přidáme na konec (aby byla v DOMu později a tedy nahoře)
-              hasChanges = true;
-              console.log('📥 Stažena nová zakázka z Firebase:', data.jobId || change.doc.id);
+                const newJob: JobData = {
+                  ...data,
+                  fireId: change.doc.id,
+                  id: Math.random().toString(36).substring(2, 11), // Vygenerujeme lokální ID pro React key
+                  // Pokud chybí, doplníme defaulty
+                  status: data.status || JobStatus.INQUIRY,
+                  position: finalPos,
+                  items: data.items || [],
+                  technology: data.technology || [],
+                  dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
+                  zIndex: data.zIndex || Date.now()
+                };
+                newJobs = [...newJobs, newJob]; // Přidáme na konec (aby byla v DOMu později a tedy nahoře)
+                hasChanges = true;
+                console.log('📥 Stažena nová zakázka z Firebase:', data.jobId || change.doc.id);
+              }
             }
           }
 
