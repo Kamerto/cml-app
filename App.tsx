@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.8.0-LIVE';
+  const VERSION = 'v2.8.2-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -416,8 +416,8 @@ const App: React.FC = () => {
                   ...data, 
                   fireId: change.doc.id, 
                   isNew: current.isNew,
-                  // Zachováme trackingStage z lokálního state (orders listener ho nastavuje dříve)
-                  trackingStage: data.trackingStage || current.trackingStage,
+                  // Synchronizované stavy z výroby bereme prioritně, pokud v dokumentu jsou
+                  trackingStage: data.trackingStage ?? current.trackingStage,
                   isTracked: data.isTracked ?? current.isTracked,
                 };
                 hasChanges = true;
@@ -454,10 +454,6 @@ const App: React.FC = () => {
       const changes = snapshot.docChanges();
       if (changes.length === 0) return;
 
-      setJobs(currentJobs => {
-        let newJobs = [...currentJobs];
-        let hasChanges = false;
-
         changes.forEach(change => {
           if (change.type !== 'modified' && change.type !== 'added') return;
 
@@ -465,35 +461,21 @@ const App: React.FC = () => {
           const incomingStage = data.currentStage;
           const incomingFireId = data.fireId || change.doc.id;
 
-          if (!incomingStage) return;
+          if (!incomingStage || !incomingFireId) return;
 
-          // Najdeme odpovídající kartu na tabuli podle fireId
-          const index = newJobs.findIndex(j => j.fireId === incomingFireId);
-          if (index === -1) return;
-
-          const current = newJobs[index];
-
-          // Aktualizujeme jen pokud se stage skutečně změnil
-          if (current.trackingStage === incomingStage) return;
-
-          newJobs[index] = {
-            ...current,
-            trackingStage: incomingStage,
-            isTracked: true,
-          };
-          hasChanges = true;
-          console.log(`🔄 Tracking sync: ${current.jobId} → ${incomingStage}`);
-
-          // Zapíšeme trackingStage zpátky do cml_board_cards
+          // Místo přímého setJobs zapíšeme jen do Firebase Boardu.
+          // Tím se vyhneme race-condition a "blikání" state.
+          // State se zaktualizuje přes board cards listener výše.
           updateDoc(doc(db, BOARD_CARDS_COLLECTION, incomingFireId), { 
             trackingStage: incomingStage,
             isTracked: true,
             lastUpdated: serverTimestamp()
-          }).catch(e => console.error('Chyba při zpětném zápisu stage:', e));
+          }).then(() => {
+             console.log(`✅ Stage sync OK: ${incomingFireId} -> ${incomingStage}`);
+          }).catch(e => {
+             console.warn('❌ Stage sync FAIL (Board doc might not exist yet):', incomingFireId);
+          });
         });
-
-        return hasChanges ? newJobs : currentJobs;
-      });
     });
 
     return () => unsubscribe();
