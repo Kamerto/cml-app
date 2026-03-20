@@ -93,6 +93,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
   };
 
   const getBgClass = () => {
+    if (job.trackingStage === 'completed') return 'bg-purple-600 shadow-[0_0_20px_rgba(147,51,234,0.4)] ring-2 ring-purple-400/50';
     if (isUrgent && !job.isFolder) return 'bg-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)] ring-2 ring-rose-400/50';
     if (job.status === JobStatus.READY_FOR_PROD) return '';
     if (job.isFolder) return 'bg-amber-600/90';
