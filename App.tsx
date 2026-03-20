@@ -107,7 +107,7 @@ const App: React.FC = () => {
       let currentFireId = job.fireId;
       if (currentFireId) {
         // Máme ID, updatujeme přímo
-        await updateDoc(doc(db, BOARD_CARDS_COLLECTION, currentFireId), { ...job, lastUpdated: serverTimestamp() });
+        await updateDoc(doc(db, BOARD_CARDS_COLLECTION, currentFireId), { ...job, fireId: currentFireId, lastUpdated: serverTimestamp() });
         console.log('Firebase BOARD UPDATE (Direct):', job.jobId);
       } else {
         // Nemáme ID, musíme najít nebo vytvořit
@@ -115,7 +115,7 @@ const App: React.FC = () => {
         const boardSnap = await getDocs(boardQuery);
         if (!boardSnap.empty) {
           currentFireId = boardSnap.docs[0].id;
-          await updateDoc(boardSnap.docs[0].ref, { ...job, lastUpdated: serverTimestamp() });
+          await updateDoc(boardSnap.docs[0].ref, { ...job, fireId: currentFireId, lastUpdated: serverTimestamp() });
           console.log('Firebase BOARD UPDATE (Query):', job.jobId);
         } else {
           const newDoc = await addDoc(collection(db, BOARD_CARDS_COLLECTION), { ...job, created_at: serverTimestamp() });
