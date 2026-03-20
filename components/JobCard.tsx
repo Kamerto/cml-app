@@ -23,6 +23,11 @@ const STAGE_LABELS: Record<string, string> = {
 const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChange, onBringToFront }) => {
   const statusConfig = COLUMNS.find(c => c.id === job.status);
 
+  // DEBUG: Tracking props
+  if (job.isTracked || job.trackingStage) {
+    console.log(`🏷️ JobCard ${job.jobId}: isTracked=${job.isTracked}, trackingStage=${job.trackingStage}`);
+  }
+
   const districtMatch = job.address?.match(/Praha\s*(\d{1,2})/i);
   const district = districtMatch ? `Praha ${districtMatch[1]}` : null;
 
