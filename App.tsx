@@ -457,6 +457,13 @@ const App: React.FC = () => {
           };
           hasChanges = true;
           console.log(`🔄 Tracking sync: ${current.jobId} → ${incomingStage}`);
+
+          // Zapíšeme trackingStage zpátky do cml_board_cards
+          updateDoc(doc(db, BOARD_CARDS_COLLECTION, incomingFireId), { 
+            trackingStage: incomingStage,
+            isTracked: true,
+            lastUpdated: serverTimestamp()
+          }).catch(e => console.error('Chyba při zpětném zápisu stage:', e));
         });
 
         return hasChanges ? newJobs : currentJobs;
