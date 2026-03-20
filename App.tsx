@@ -147,6 +147,7 @@ const App: React.FC = () => {
         });
         console.log('Firebase PUBLIC SYNC (Unified ID + Mapping):', job.jobId);
       }
+      return currentFireId;
     } catch (e) {
       console.error('Chyba při ukládání do Firebase:', e);
     }
@@ -799,7 +800,11 @@ const App: React.FC = () => {
     });
 
     // 2. Uložení do Firebase (na pozadí)
-    saveToFirebase(data);
+    saveToFirebase(data).then(fireId => {
+      if (fireId) {
+        setJobs(prev => prev.map(j => j.id === data.id ? { ...j, fireId } : j));
+      }
+    });
 
     if (shouldClose) {
       setIsModalOpen(false);
