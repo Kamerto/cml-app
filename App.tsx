@@ -118,8 +118,9 @@ const App: React.FC = () => {
           await updateDoc(boardSnap.docs[0].ref, { ...job, fireId: currentFireId, lastUpdated: serverTimestamp() });
           console.log('Firebase BOARD UPDATE (Query):', job.jobId);
         } else {
-          const newDoc = await addDoc(collection(db, BOARD_CARDS_COLLECTION), { ...job, created_at: serverTimestamp() });
-          currentFireId = newDoc.id;
+          const newDocRef = doc(collection(db, BOARD_CARDS_COLLECTION));
+          await setDoc(newDocRef, { ...job, fireId: newDocRef.id, created_at: serverTimestamp() });
+          currentFireId = newDocRef.id;
           console.log('Firebase BOARD CREATE:', job.jobId);
         }
       }
