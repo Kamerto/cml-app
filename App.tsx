@@ -393,7 +393,15 @@ const App: React.FC = () => {
               const { isNew: _dataIsNew, ...dataPure } = data;
 
               if (JSON.stringify(currentPure) !== JSON.stringify({ ...dataPure, fireId: change.doc.id, id: current.id })) {
-                newJobs[index] = { ...current, ...data, fireId: change.doc.id, isNew: current.isNew };
+                newJobs[index] = { 
+                  ...current, 
+                  ...data, 
+                  fireId: change.doc.id, 
+                  isNew: current.isNew,
+                  // Zachováme trackingStage z lokálního state (orders listener ho nastavuje dříve)
+                  trackingStage: data.trackingStage || current.trackingStage,
+                  isTracked: data.isTracked ?? current.isTracked,
+                };
                 hasChanges = true;
                 console.log('🔄 Aktualizována zakázka z Firebase:', data.jobId || change.doc.id);
               }
