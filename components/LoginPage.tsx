@@ -12,7 +12,11 @@ import {
 import { auth, db, INVITES_COLLECTION } from '../firebase';
 import { Printer, AlertTriangle, Loader2 } from 'lucide-react';
 
-const LoginPage: React.FC = () => {
+interface LoginPageProps {
+    version?: string;
+}
+
+const LoginPage: React.FC<LoginPageProps> = ({ version }) => {
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [inviteCode, setInviteCode] = useState('');
@@ -161,8 +165,9 @@ const LoginPage: React.FC = () => {
                     </div>
                 </div>
 
-                <p className="mt-8 text-center text-slate-600 text-[10px] font-black tracking-widest uppercase">
-                    © 2026 CALAMARUS DTP & AI STUDIO
+                <p className="mt-8 text-center text-slate-600 text-[10px] font-black tracking-widest uppercase flex flex-col gap-1 items-center">
+                    <span>© 2026 CALAMARUS DTP & AI STUDIO</span>
+                    {version && <span className="text-purple-500/50">{version}</span>}
                 </p>
             </div>
         </div>

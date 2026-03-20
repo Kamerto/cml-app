@@ -932,7 +932,7 @@ const App: React.FC = () => {
   }
 
   if (!user) {
-    return <LoginPage />;
+    return <LoginPage version={VERSION} />;
   }
 
   return (
