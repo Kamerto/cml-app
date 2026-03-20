@@ -158,7 +158,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
       {/* District Metadata & Tracking */}
       <div className="flex justify-end gap-1 mb-1 h-3.5 shrink-0">
         {job.isTracked && job.trackingStage && job.trackingStage !== 'completed' && (
-          <div className="px-1.5 rounded bg-emerald-500/20 text-emerald-300 text-[8px] font-black uppercase flex items-center gap-1 border border-emerald-500/30">
+          <div className="px-1.5 py-0.5 rounded bg-emerald-600/40 text-white text-[10px] font-black uppercase flex items-center gap-1 border border-emerald-400/30 shadow-sm">
             {STAGE_LABELS[job.trackingStage] || job.trackingStage}
           </div>
         )}
