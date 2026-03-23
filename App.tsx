@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.8.2-LIVE';
+  const VERSION = 'v2.8.3-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -72,6 +72,13 @@ const App: React.FC = () => {
   const [isAuthLoading, setIsAuthLoading] = useState(!MOCK_MODE);
 
   const workspaceRef = useRef<HTMLDivElement>(null);
+  const selectedJobRef = useRef<JobData | null>(null);
+
+  const openModal = (job: JobData) => {
+    selectedJobRef.current = job;
+    setSelectedJob(job);
+    setIsModalOpen(true);
+  };
 
   useEffect(() => {
     localStorage.setItem('cml_jobs_v3', JSON.stringify(jobs));
@@ -421,6 +428,11 @@ const App: React.FC = () => {
                   isTracked: data.isTracked ?? current.isTracked,
                 };
                 hasChanges = true;
+
+                // Aktualizujeme ref (ale NE state selectedJob — to by zavřelo modal)
+                if (selectedJobRef.current?.id === current.id) {
+                  selectedJobRef.current = newJobs[index];
+                }
                 console.log('🔄 Aktualizována zakázka z Firebase:', data.jobId || change.doc.id);
               }
             }
@@ -455,7 +467,7 @@ const App: React.FC = () => {
       if (changes.length === 0) return;
 
         changes.forEach(change => {
-          if (change.type !== 'modified' && change.type !== 'added') return;
+          if (change.type !== 'modified') return;
 
           const data = change.doc.data() as any;
           const incomingStage = data.currentStage;
@@ -796,8 +808,7 @@ const App: React.FC = () => {
       items: [{ id: Math.random().toString(36).substring(2, 11), description: '', quantity: 0, size: '', colors: '', techSpecs: '', stockFormat: '', paperType: '', paperWeight: '', itemsPerSheet: '', numberOfPages: 0 }],
       bindingType: '', laminationType: '', processing: '', cooperation: '', shippingNotes: '', generalNotes: '', icon: 'FileText'
     };
-    setSelectedJob(newJob);
-    setIsModalOpen(true);
+    openModal(newJob);
   };
 
   const handleSaveJob = (data: JobData, shouldClose = true) => {
@@ -824,6 +835,7 @@ const App: React.FC = () => {
     if (shouldClose) {
       setIsModalOpen(false);
       setSelectedJob(null);
+      selectedJobRef.current = null;
     }
   };
 
@@ -836,6 +848,7 @@ const App: React.FC = () => {
       }
       setIsModalOpen(false);
       setSelectedJob(null);
+      selectedJobRef.current = null;
     }
   };
 
@@ -875,8 +888,7 @@ const App: React.FC = () => {
           const hasMissingColors = jobToOpen.items.some(item => !item.colors || item.colors.trim() === '');
 
           if (hasMissingTech || hasMissingColors) {
-            setSelectedJob(jobToOpen);
-            setIsModalOpen(true);
+            openModal(jobToOpen);
           }
         }
       }
@@ -983,8 +995,7 @@ const App: React.FC = () => {
             job={job}
             onClick={() => {
               bringToFront(job.id);
-              setSelectedJob(job);
-              setIsModalOpen(true);
+              openModal(job);
             }}
             onDelete={handleDeleteJob}
             onStatusChange={handleStatusChangeOnBoard}
@@ -1062,11 +1073,15 @@ const App: React.FC = () => {
         </div>
       )}
 
-      {isModalOpen && selectedJob && (
+      {isModalOpen && (selectedJobRef.current || selectedJob) && (
         <JobFormModal
-          key={selectedJob.id}
-          job={selectedJob}
-          onClose={() => setIsModalOpen(false)}
+          key={(selectedJobRef.current || selectedJob)!.id}
+          job={(selectedJobRef.current || selectedJob)!}
+          onClose={() => {
+            setIsModalOpen(false);
+            setSelectedJob(null);
+            selectedJobRef.current = null;
+          }}
           onSave={handleSaveJob}
           onDelete={handleDeleteJob}
         />
