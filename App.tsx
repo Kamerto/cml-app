@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.8.3-LIVE';
+  const VERSION = 'v2.8.4-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -492,6 +492,84 @@ const App: React.FC = () => {
 
     return () => unsubscribe();
   }, []);
+
+  // --- AUTO-IMPORT: Zakázky z fronty → Tabule při startu ---
+  useEffect(() => {
+    const autoImportFromQueue = async () => {
+      try {
+        const queueSnap = await getDocs(query(collection(db, PUBLIC_ORDERS_COLLECTION)));
+        const boardSnap = await getDocs(query(collection(db, BOARD_CARDS_COLLECTION)));
+
+        // Sestavíme sadu všech jobId které už na tabuli jsou
+        const existingJobIds = new Set(
+          boardSnap.docs.map(d => (d.data().jobId || '').trim()).filter(Boolean)
+        );
+
+        const toImport = queueSnap.docs.filter(d => {
+          const data = d.data();
+          const jobId = (data.jobId || data.orderNumber || '').trim();
+          // Přeskočíme poškozené a duplicity
+          if (!jobId || jobId === '???' || jobId === 'null' || jobId === 'undefined') return false;
+          return !existingJobIds.has(jobId);
+        });
+
+        if (toImport.length === 0) return;
+
+        console.log(`📥 Auto-import: nalezeno ${toImport.length} nových zakázek z fronty`);
+
+        const batchPositions: { x: number, y: number }[] = [];
+
+        for (const d of toImport) {
+          const data = d.data() as any;
+          const pos = getNewJobPosition(batchPositions);
+          batchPositions.push(pos);
+
+          const newJob: JobData = {
+            id: Math.random().toString(36).substring(2, 11),
+            jobId: data.jobId || data.orderNumber || d.id,
+            customer: data.clientName || data.customer || '',
+            jobName: data.jobName || '',
+            address: data.address || '',
+            dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
+            deadline: data.deadline || '',
+            technology: data.printType || data.technology || [],
+            status: data.status || JobStatus.INQUIRY,
+            position: pos,
+            isNew: false,
+            isTracked: true,
+            trackingStage: data.currentStage || data.trackingStage || 'studio',
+            zIndex: Date.now(),
+            items: data.items || [],
+            bindingType: data.bindingType || '',
+            laminationType: data.laminationType || '',
+            processing: data.processing || '',
+            cooperation: data.cooperation || '',
+            shippingNotes: data.shippingNotes || '',
+            generalNotes: data.generalNotes || '',
+            icon: data.icon || 'FileText',
+          };
+
+          // Uložíme na tabuli (saveToFirebase vrátí fireId)
+          const fireId = await saveToFirebase(newJob);
+          if (fireId) {
+            newJob.fireId = fireId;
+          }
+
+          setJobs(prev => {
+            // Finální kontrola duplicity před přidáním do state
+            if (prev.some(j => j.jobId === newJob.jobId)) return prev;
+            return [...prev, newJob];
+          });
+
+          console.log(`✅ Auto-importována zakázka: ${newJob.jobId}`);
+        }
+      } catch (e) {
+        console.error('Chyba při auto-importu z fronty:', e);
+      }
+    };
+
+    autoImportFromQueue();
+  }, []); // Spustí se jednou při mountu
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
