@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.6-LIVE';
+  const VERSION = 'v2.9.7-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -509,27 +509,35 @@ const App: React.FC = () => {
 
           const data = change.doc.data() as any;
           const incomingStage = data.currentStage;
-          const incomingFireId = data.fireId || change.doc.id;
+          const jobId = data.jobId || data.orderNumber;
 
           console.log('🔄 Orders modified:', { 
-            jobId: data.jobId || data.orderNumber, 
+            jobId, 
             incomingStage, 
-            incomingFireId,
             docId: change.doc.id
           });
 
-          if (!incomingStage || !incomingFireId) return;
+          if (!incomingStage || !jobId) return;
 
-          // Místo přímého setJobs zapíšeme jen do Firebase Boardu.
-          // Tím se vyhneme race-condition a "blikání" state.
-          // State se zaktualizuje přes board cards listener výše.
-          updateDoc(doc(db, BOARD_CARDS_COLLECTION, incomingFireId), {
-            trackingStage: incomingStage,
-            lastUpdated: serverTimestamp()
-          }).then(() => {
-            console.log(`✅ Stage sync OK: ${incomingFireId} -> ${incomingStage}`);
-          }).catch(() => {
-            console.warn('❌ Stage sync FAIL:', incomingFireId);
+          // Najdeme kartu na tabuli podle jobId (spolehlivější než fireId pro importy)
+          const boardQuery = query(
+            collection(db, BOARD_CARDS_COLLECTION), 
+            where('jobId', '==', jobId)
+          );
+          getDocs(boardQuery).then(snap => {
+            if (snap.empty) {
+              console.warn('❌ Stage sync FAIL - karta nenalezena pro jobId:', jobId);
+              return;
+            }
+            snap.docs.forEach(d => {
+              updateDoc(d.ref, { 
+                trackingStage: incomingStage,
+                lastUpdated: serverTimestamp()
+              });
+            });
+            console.log(`✅ Stage sync OK: ${jobId} -> ${incomingStage}`);
+          }).catch(e => {
+            console.warn('❌ Stage sync FAIL:', e);
           });
         });
     });
