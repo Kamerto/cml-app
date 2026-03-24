@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.2-LIVE';
+  const VERSION = 'v2.9.3-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -163,24 +163,26 @@ const App: React.FC = () => {
 
   // Smazání zakázky z Firebase
   const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string) => {
-    console.log('🗑️ deleteFromFirebase:', { jobId, orderId, fireId });
     try {
-      // 1. Smazat z BOARD kolekce
       if (fireId) {
         await deleteDoc(doc(db, BOARD_CARDS_COLLECTION, fireId));
-        // S Unified ID strategií zkusíme smazat i z PUBLIC se stejným ID
         await deleteDoc(doc(db, PUBLIC_ORDERS_COLLECTION, fireId));
         console.log('Smazáno z obou kolekcí (Unified Doc ID):', fireId);
-      } else {
-        // Fallback pro staré verze
-        const qb = query(collection(db, BOARD_CARDS_COLLECTION), where("jobId", "==", orderId || jobId));
-        const sb = await getDocs(qb);
-        sb.forEach(d => deleteDoc(d.ref));
-
-        const qp = query(collection(db, PUBLIC_ORDERS_COLLECTION), where("jobId", "==", orderId || jobId));
-        const sp = await getDocs(qp);
-        sp.forEach(d => deleteDoc(d.ref));
       }
+      
+      // Vždy také smažeme podle jobId z fronty (pro zakázky importované z fronty)
+      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), 
+        where('jobId', '==', orderId || jobId));
+      const snap = await getDocs(q);
+      snap.forEach(d => deleteDoc(d.ref));
+      
+      // Také zkusíme orderNumber (fronta může používat jiný klíč)
+      const q2 = query(collection(db, PUBLIC_ORDERS_COLLECTION), 
+        where('orderNumber', '==', orderId || jobId));
+      const snap2 = await getDocs(q2);
+      snap2.forEach(d => deleteDoc(d.ref));
+
+      console.log('🗑️ Smazáno z fronty podle jobId:', orderId || jobId);
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
     }
@@ -469,6 +471,21 @@ const App: React.FC = () => {
       if (changes.length === 0) return;
 
         changes.forEach(change => {
+          if (change.type === 'removed') {
+            const data = change.doc.data() as any;
+            const removedJobId = data.jobId || data.orderNumber;
+            if (!removedJobId) return;
+            
+            setJobs(prev => {
+              const job = prev.find(j => j.jobId === removedJobId);
+              if (!job) return prev;
+              // Smažeme z board kolekce
+              if (job.fireId) deleteDoc(doc(db, BOARD_CARDS_COLLECTION, job.fireId));
+              return prev.filter(j => j.jobId !== removedJobId);
+            });
+            console.log('🗑️ Zakázka smazána z fronty, odstraněna i z tabule:', removedJobId);
+          }
+
           if (change.type !== 'modified') return;
 
           const data = change.doc.data() as any;
