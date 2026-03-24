@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.8.7-LIVE';
+  const VERSION = 'v2.8.8-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -135,7 +135,7 @@ const App: React.FC = () => {
 
       // 2. AKTUALIZACE SPOLEČNÉ FRONTY (PUBLIC_ORDERS_COLLECTION / orders)
       // UNIFIED ID STRATEGY: Použijeme stejné ID dokumentu jako v Tabuli
-      if (job.isTracked && currentFireId && !skipPublicSync) {
+      if (job.isTracked && currentFireId && !skipPublicSync && !job.fromQueue) {
         // Použijeme setDoc místo addDoc, aby ID bylo stejné jako na Tabuli
         const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, currentFireId);
 
@@ -538,6 +538,7 @@ const App: React.FC = () => {
             position: pos,
             isNew: false,
             isTracked: false,
+            fromQueue: true,
             trackingStage: data.currentStage || data.trackingStage || 'studio',
             zIndex: Date.now(),
             items: data.items || [],

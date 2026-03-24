@@ -52,6 +52,7 @@ export interface JobData {
   outlookId?: string;
   isNew?: boolean;
   zIndex?: number;
+  fromQueue?: boolean;
 }
 
 export interface Column {
