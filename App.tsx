@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.5-LIVE';
+  const VERSION = 'v2.9.6-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -510,6 +510,13 @@ const App: React.FC = () => {
           const data = change.doc.data() as any;
           const incomingStage = data.currentStage;
           const incomingFireId = data.fireId || change.doc.id;
+
+          console.log('🔄 Orders modified:', { 
+            jobId: data.jobId || data.orderNumber, 
+            incomingStage, 
+            incomingFireId,
+            docId: change.doc.id
+          });
 
           if (!incomingStage || !incomingFireId) return;
 
