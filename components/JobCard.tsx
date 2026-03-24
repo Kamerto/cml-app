@@ -76,10 +76,9 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
   }, [job.deadline]);
 
   const getStyle = (): React.CSSProperties => {
-    // If urgent, let getBgClass handle the red background unless it's READY_FOR_PROD with specific tech colors
-    if (job.status === JobStatus.READY_FOR_PROD && !isUrgent) {
-      const hasOfset = job.technology?.includes('OFSET');
-      const hasDigi = job.technology?.includes('DIGI');
+    if (!isUrgent) {
+      const hasOfset = job.technology?.some(t => t === 'OFSET' || t === 'O');
+      const hasDigi = job.technology?.some(t => t === 'DIGI' || t === 'D');
 
       if (hasOfset && hasDigi) {
         return { background: 'linear-gradient(to right, #f97316 50%, #0ea5e9 50%)' };
@@ -95,8 +94,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
   const getBgClass = () => {
     if (job.trackingStage === 'completed') return 'bg-purple-600 shadow-[0_0_20px_rgba(147,51,234,0.4)] ring-2 ring-purple-400/50';
     if (isUrgent && !job.isFolder) return 'bg-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)] ring-2 ring-rose-400/50';
-    if (job.status === JobStatus.READY_FOR_PROD) return '';
     if (job.isFolder) return 'bg-amber-600/90';
+    
+    // Pokud má technologii, barva přijde z getStyle()
+    const hasTech = job.technology?.some(t => ['OFSET', 'O', 'DIGI', 'D'].includes(t));
+    if (hasTech) return '';
+    
     return statusConfig?.color || 'bg-slate-700';
   };
 
