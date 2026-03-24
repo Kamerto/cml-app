@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.8.8-LIVE';
+  const VERSION = 'v2.8.9-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -522,6 +522,7 @@ const App: React.FC = () => {
 
         for (const d of toImport) {
           const data = d.data() as any;
+          console.log('🎨 printType z fronty:', data.printType, 'technology:', data.technology);
           const pos = getNewJobPosition(batchPositions);
           batchPositions.push(pos);
 
