@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.1-LIVE';
+  const VERSION = 'v2.9.2-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -163,6 +163,7 @@ const App: React.FC = () => {
 
   // Smazání zakázky z Firebase
   const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string) => {
+    console.log('🗑️ deleteFromFirebase:', { jobId, orderId, fireId });
     try {
       // 1. Smazat z BOARD kolekce
       if (fireId) {
