@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.3-LIVE';
+  const VERSION = 'v2.9.4-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -228,6 +228,25 @@ const App: React.FC = () => {
     } catch (e) {
       console.error('Chyba při čištění:', e);
       alert('Chyba při čištění databáze.');
+    }
+  };
+
+  const fixQueueImports = async () => {
+    if (!confirm('Zakázky importované z fronty přestanou zpětně zapisovat do fronty. Nic se nesmaže. Pokračovat?')) return;
+    try {
+      const snap = await getDocs(query(collection(db, BOARD_CARDS_COLLECTION)));
+      let fixed = 0;
+      for (const d of snap.docs) {
+        const data = d.data();
+        if (data.isTracked === true) {
+          await updateDoc(d.ref, { isTracked: false });
+          fixed++;
+        }
+      }
+      alert(`Hotovo! Opraveno ${fixed} zakázek.`);
+    } catch (e) {
+      console.error(e);
+      alert('Chyba.');
     }
   };
 
@@ -1149,6 +1168,13 @@ const App: React.FC = () => {
                 className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-white rounded-2xl text-[11px] font-black border border-red-500/30 transition-all uppercase tracking-wider"
               >
                 <Trash2 className="w-4 h-4" /> SMAZAT POŠKOZENÉ ZAKÁZKY Z TABULE
+              </button>
+
+              <button
+                onClick={fixQueueImports}
+                className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-blue-600/10 hover:bg-blue-600 text-blue-500 hover:text-white rounded-2xl text-[11px] font-black border border-blue-500/30 transition-all uppercase tracking-wider"
+              >
+                <ClipboardCheck className="w-4 h-4" /> OPRAVIT IMPORTOVANÉ ZAKÁZKY Z FRONTY
               </button>
 
               <p className="mt-3 text-[9px] text-slate-600 text-center italic">
