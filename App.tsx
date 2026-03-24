@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.4-LIVE';
+  const VERSION = 'v2.9.5-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -516,14 +516,13 @@ const App: React.FC = () => {
           // Místo přímého setJobs zapíšeme jen do Firebase Boardu.
           // Tím se vyhneme race-condition a "blikání" state.
           // State se zaktualizuje přes board cards listener výše.
-          updateDoc(doc(db, BOARD_CARDS_COLLECTION, incomingFireId), { 
+          updateDoc(doc(db, BOARD_CARDS_COLLECTION, incomingFireId), {
             trackingStage: incomingStage,
-            isTracked: true,
             lastUpdated: serverTimestamp()
           }).then(() => {
-             console.log(`✅ Stage sync OK: ${incomingFireId} -> ${incomingStage}`);
-          }).catch(e => {
-             console.warn('❌ Stage sync FAIL (Board doc might not exist yet):', incomingFireId);
+            console.log(`✅ Stage sync OK: ${incomingFireId} -> ${incomingStage}`);
+          }).catch(() => {
+            console.warn('❌ Stage sync FAIL:', incomingFireId);
           });
         });
     });
