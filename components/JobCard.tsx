@@ -76,9 +76,12 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
   }, [job.deadline]);
 
   const getStyle = (): React.CSSProperties => {
+    // Hotovo = fialová, nic jiného
+    if (job.trackingStage === 'completed') return {};
+    
     if (!isUrgent) {
-      const hasOfset = job.technology?.some(t => t === 'OFSET' || t === 'O');
-      const hasDigi = job.technology?.some(t => t === 'DIGI' || t === 'D');
+      const hasOfset = job.technology?.some(t => t === 'OFSET' || t === 'O' || t.toLowerCase() === 'offset');
+      const hasDigi = job.technology?.some(t => t === 'DIGI' || t === 'D' || t.toLowerCase() === 'digital');
 
       if (hasOfset && hasDigi) {
         return { background: 'linear-gradient(to right, #f97316 50%, #0ea5e9 50%)' };
@@ -96,8 +99,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
     if (isUrgent && !job.isFolder) return 'bg-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)] ring-2 ring-rose-400/50';
     if (job.isFolder) return 'bg-amber-600/90';
     
-    // Pokud má technologii, barva přijde z getStyle()
-    const hasTech = job.technology?.some(t => ['OFSET', 'O', 'DIGI', 'D'].includes(t));
+    const hasTech = job.technology?.some(t => ['OFSET', 'O', 'DIGI', 'D', 'offset', 'digital'].includes(t));
     if (hasTech) return '';
     
     return statusConfig?.color || 'bg-slate-700';
