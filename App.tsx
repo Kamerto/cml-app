@@ -50,7 +50,7 @@ const EMAILS_COLLECTION = import.meta.env.VITE_MOCK_MODE === 'true' ? 'zakazka_e
 import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
-  const VERSION = 'v2.9.8-LIVE';
+  const VERSION = 'v3.1.0-LIVE';
   const [jobs, setJobs] = useState<JobData[]>(() => {
     const saved = localStorage.getItem('cml_jobs_v3');
     return saved ? JSON.parse(saved) : INITIAL_JOBS;
@@ -64,6 +64,7 @@ const App: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [activePage, setActivePage] = useState<1 | 2>(1);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
   const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
   console.log("APP.TSX: MOCK_MODE =", MOCK_MODE);
@@ -887,7 +888,8 @@ const App: React.FC = () => {
       id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       text: '',
       position: pos,
-      zIndex: Date.now()
+      zIndex: Date.now(),
+      color: '#ff69b4' // reflexní růžová
     };
     setNotes(prev => [...prev, newNote]);
     saveNoteToFirebase(newNote);
@@ -1024,19 +1026,21 @@ const App: React.FC = () => {
     const id = (j.jobId || '').toLowerCase().trim();
     if (!id || id === '???' || id === 'id?' || id === 'null' || id === 'undefined') return false;
 
+    const isInProduction = j.fromQueue === true || 
+      (j.trackingStage && j.trackingStage !== '');
+    
+    if (activePage === 1 && isInProduction) return false;
+    if (activePage === 2 && !isInProduction) return false;
+
     if (!searchQuery) return true;
-
-    const query = searchQuery.toLowerCase();
-    const isNumericSearch = /\d/.test(query);
-
+    const q = searchQuery.toLowerCase();
+    const isNumericSearch = /\d/.test(q);
     if (isNumericSearch) {
-      // Hledáme v čísle zakázky (jobId nebo outlookId)
-      return (j.jobId || '').toLowerCase().includes(query) ||
-        (j.outlookId || '').toLowerCase().includes(query);
+      return (j.jobId || '').toLowerCase().includes(q) ||
+        (j.outlookId || '').toLowerCase().includes(q);
     } else {
-      // Hledáme v zákazníkovi nebo názvu zakázky
-      return (j.customer || '').toLowerCase().includes(query) ||
-        (j.jobName || '').toLowerCase().includes(query);
+      return (j.customer || '').toLowerCase().includes(q) ||
+        (j.jobName || '').toLowerCase().includes(q);
     }
   });
 
@@ -1066,6 +1070,29 @@ const App: React.FC = () => {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
             <input type="text" placeholder="Hledat..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="bg-slate-800 border border-slate-700 rounded-full pl-10 pr-4 py-2 text-sm w-48 lg:w-64 focus:ring-2 focus:ring-purple-500 outline-none text-slate-200" />
+          </div>
+
+          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-full p-0.5 gap-0.5">
+            <button
+              onClick={() => setActivePage(1)}
+              className={`px-4 py-1.5 rounded-full text-xs font-black transition-all ${
+                activePage === 1 
+                  ? 'bg-purple-600 text-white shadow-lg' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              PŘÍPRAVA
+            </button>
+            <button
+              onClick={() => setActivePage(2)}
+              className={`px-4 py-1.5 rounded-full text-xs font-black transition-all ${
+                activePage === 2 
+                  ? 'bg-emerald-600 text-white shadow-lg' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              VÝROBA
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -1104,9 +1131,13 @@ const App: React.FC = () => {
         ref={workspaceRef}
         onDragOver={(e) => e.preventDefault()}
         onDrop={handleDrop}
-        className="flex-1 relative overflow-auto bg-slate-950 p-10"
+        className={`flex-1 relative overflow-auto p-10 ${
+          activePage === 1 ? 'bg-slate-950' : 'bg-slate-800'
+        }`}
         style={{
-          backgroundImage: 'radial-gradient(circle, #1e293b 1px, transparent 1px)',
+          backgroundImage: activePage === 1
+            ? 'radial-gradient(circle, #1e293b 1px, transparent 1px)'
+            : 'radial-gradient(circle, #334155 1px, transparent 1px)',
           backgroundSize: '40px 40px',
           minWidth: '2000px',
           minHeight: '2000px'

@@ -41,7 +41,7 @@ const BoardNote: React.FC<BoardNoteProps> = ({ note, onUpdate, onDelete, onBring
                 left: `${note.position.x}px`,
                 top: `${note.position.y}px`,
                 zIndex: note.zIndex || 1,
-                backgroundColor: note.color || '#fef08a', // default tailwind yellow-200
+                backgroundColor: note.color || '#ff69b4', // reflexní růžová
                 boxShadow: '4px 6px 15px rgba(0,0,0,0.3), inset 0 0 20px rgba(0,0,0,0.05)'
             }}
         >

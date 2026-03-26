@@ -11,9 +11,9 @@ export const COLUMNS: Column[] = [
   {
     id: JobStatus.PRODUCTION,
     title: 'Kalkulace',
-    color: 'bg-emerald-800',
-    borderColor: 'border-emerald-600',
-    accentColor: 'text-emerald-50'
+    color: 'bg-yellow-500',
+    borderColor: 'border-yellow-400',
+    accentColor: 'text-yellow-950'
   },
   {
     id: JobStatus.READY_FOR_PROD,
