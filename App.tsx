@@ -164,7 +164,7 @@ const App: React.FC = () => {
   };
 
   // Smazání zakázky z Firebase
-  const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string) => {
+  const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string, outlookId?: string) => {
     try {
       if (fireId) {
         await deleteDoc(doc(db, BOARD_CARDS_COLLECTION, fireId));
@@ -185,6 +185,15 @@ const App: React.FC = () => {
       snap2.forEach(d => deleteDoc(d.ref));
 
       console.log('🗑️ Smazáno z fronty podle jobId:', orderId || jobId);
+
+      // Smazání emailů přiřazených k zakázce
+      const ids = [orderId, jobId, outlookId].filter(Boolean) as string[];
+      for (const id of ids) {
+        const eq = query(collection(db, EMAILS_COLLECTION), where('zakazka_id', '==', id));
+        const esnap = await getDocs(eq);
+        esnap.forEach(d => deleteDoc(d.ref));
+      }
+      console.log('🗑️ Smazány emaily pro zakázku:', ids.join(', '));
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
     }
@@ -970,7 +979,7 @@ const App: React.FC = () => {
       const jobToDelete = jobs.find(j => j.id === id);
       setJobs(prev => prev.filter(j => j.id !== id));
       if (jobToDelete) {
-        deleteFromFirebase(id, jobToDelete.jobId || jobToDelete.id, jobToDelete.fireId);
+        deleteFromFirebase(id, jobToDelete.jobId || jobToDelete.id, jobToDelete.fireId, jobToDelete.outlookId);
       }
       setIsModalOpen(false);
       setSelectedJob(null);

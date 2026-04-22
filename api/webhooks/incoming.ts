@@ -16,6 +16,35 @@ if (!getApps().length) {
 
 const db = getFirestore();
 
+// Centrální fallback funkce pro Gemini
+const GEMINI_MODELS = [
+    'gemini-2.0-flash-lite',
+    'gemini-2.5-flash-lite',
+    'gemini-2.0-flash',
+    'gemini-2.5-flash',
+];
+
+async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
+    let lastError: any;
+    for (const model of GEMINI_MODELS) {
+        try {
+            const ai = new GoogleGenAI({ apiKey });
+            const response = await ai.models.generateContent({ model, ...params });
+            return response;
+        } catch (e: any) {
+            const msg = (e?.message || String(e)).toLowerCase();
+            const isRetryable = msg.includes('503') || msg.includes('unavailable') ||
+                msg.includes('quota') || msg.includes('overloaded') ||
+                msg.includes('high demand') || msg.includes('429') ||
+                msg.includes('exhausted');
+            console.warn(`Webhook: Model ${model} selhal:`, msg);
+            lastError = e;
+            if (!isRetryable) throw e;
+        }
+    }
+    throw lastError;
+}
+
 // AI Funkce pro parsování e-mailu
 async function parseEmailWithAI(preview: string, subject: string, sender: string) {
     const apiKey = process.env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
@@ -40,9 +69,7 @@ JSON formát:
   "items": [{"description": "popis", "quantity": 100, "colors": "4/4", "techSpecs": ""}]
 }`;
 
-        const genAI = new GoogleGenAI({ apiKey });
-        const result = await genAI.models.generateContent({
-            model: "gemini-1.5-flash",
+        const result = await geminiWithFallback(apiKey, {
             contents: prompt,
         });
 
@@ -52,7 +79,7 @@ JSON formát:
 
         return JSON.parse(cleanJson);
     } catch (e: any) {
-        console.error('AI selhalo:', e.message);
+        console.error('Webhook: AI selhalo:', e.message);
         return { customer: sender || '', jobName: subject, items: [] };
     }
 }
@@ -85,7 +112,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             const generatedOutlookId = `${idPrefix}-${Math.floor(Date.now() / 1000)}`;
 
             const newJob = {
-                jobId: '',
+                jobId: generatedOutlookId,
                 outlookId: generatedOutlookId,
                 customer: aiData.customer,
                 jobName: aiData.jobName,
