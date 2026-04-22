@@ -113,11 +113,17 @@ const App: React.FC = () => {
     console.log('💾 saveToFirebase:', job.jobId, 'isTracked:', job.isTracked, 'skipPublicSync:', skipPublicSync);
     if (!job.jobId) return;
     try {
+      // Odstraníme undefined hodnoty které Firebase odmítá
+      const sanitize = (obj: any) => Object.fromEntries(
+        Object.entries(obj).filter(([_, v]) => v !== undefined)
+      );
+      const cleanJob = sanitize(job);
+
       // 1. AKTUALIZACE SOUKROMÉ TABULE (BOARD_CARDS_COLLECTION)
       let currentFireId = job.fireId;
       if (currentFireId) {
         // Máme ID, updatujeme přímo
-        await updateDoc(doc(db, BOARD_CARDS_COLLECTION, currentFireId), { ...job, fireId: currentFireId, lastUpdated: serverTimestamp() });
+        await updateDoc(doc(db, BOARD_CARDS_COLLECTION, currentFireId), { ...cleanJob, fireId: currentFireId, lastUpdated: serverTimestamp() });
         console.log('Firebase BOARD UPDATE (Direct):', job.jobId);
       } else {
         // Nemáme ID, musíme najít nebo vytvořit
@@ -125,11 +131,11 @@ const App: React.FC = () => {
         const boardSnap = await getDocs(boardQuery);
         if (!boardSnap.empty) {
           currentFireId = boardSnap.docs[0].id;
-          await updateDoc(boardSnap.docs[0].ref, { ...job, fireId: currentFireId, lastUpdated: serverTimestamp() });
+          await updateDoc(boardSnap.docs[0].ref, { ...cleanJob, fireId: currentFireId, lastUpdated: serverTimestamp() });
           console.log('Firebase BOARD UPDATE (Query):', job.jobId);
         } else {
           const newDocRef = doc(collection(db, BOARD_CARDS_COLLECTION));
-          await setDoc(newDocRef, { ...job, fireId: newDocRef.id, created_at: serverTimestamp() });
+          await setDoc(newDocRef, { ...cleanJob, fireId: newDocRef.id, created_at: serverTimestamp() });
           currentFireId = newDocRef.id;
           console.log('Firebase BOARD CREATE:', job.jobId);
         }
@@ -150,9 +156,9 @@ const App: React.FC = () => {
         };
 
         await setDoc(publicDocRef, {
-          ...job,
+          ...cleanJob,
           ...queueMapping,
-          fireId: currentFireId, // Zde to slouží jako odkaz zpět k tabuli
+          fireId: currentFireId,
           lastUpdated: serverTimestamp()
         });
         console.log('Firebase PUBLIC SYNC (Unified ID + Mapping):', job.jobId);
