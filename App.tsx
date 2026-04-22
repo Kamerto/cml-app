@@ -66,7 +66,7 @@ const App: React.FC = () => {
   const [activePage, setActivePage] = useState<1 | 2>(1);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
   const [aiProvider, setAiProvider] = useState<'gemini' | 'ollama'>(() => (localStorage.getItem('cml_ai_provider') as 'gemini' | 'ollama') || 'gemini');
-  const [ollamaModel, setOllamaModel] = useState(() => localStorage.getItem('cml_ollama_model') || 'llama3.1');
+  const [ollamaModel, setOllamaModel] = useState(() => localStorage.getItem('cml_ollama_model') || 'llama3.1:latest');
   const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
   console.log("APP.TSX: MOCK_MODE =", MOCK_MODE);
 
@@ -1230,7 +1230,7 @@ const App: React.FC = () => {
                   <div className="mt-3">
                     <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Lokální model</label>
                     <div className="flex gap-2">
-                      {['llama3.1', 'gemma4:e4'].map(m => (
+                      {['llama3.1:latest', 'gemma4:e4b', 'gemma2:2b'].map(m => (
                         <button
                           key={m}
                           onClick={() => { setOllamaModel(m); localStorage.setItem('cml_ollama_model', m); }}
