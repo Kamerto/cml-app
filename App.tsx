@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import {
   Plus, Search,
@@ -66,6 +65,8 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activePage, setActivePage] = useState<1 | 2>(1);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
+  const [aiProvider, setAiProvider] = useState<'gemini' | 'ollama'>(() => (localStorage.getItem('cml_ai_provider') as 'gemini' | 'ollama') || 'gemini');
+  const [ollamaModel, setOllamaModel] = useState(() => localStorage.getItem('cml_ollama_model') || 'llama3.1');
   const MOCK_MODE = import.meta.env.VITE_MOCK_MODE === 'true';
   console.log("APP.TSX: MOCK_MODE =", MOCK_MODE);
 
@@ -1196,6 +1197,38 @@ const App: React.FC = () => {
                   Klíč se ukládá pouze ve vašem prohlížeči (localStorage). Slouží pro funkci AI Pomocníka v Tabuli.
                 </p>
               </div>
+
+              <div>
+                <label className="block text-xs font-black text-slate-500 uppercase mb-3 tracking-widest">AI Poskytovatel</label>
+                <div className="flex gap-2 p-1.5 bg-slate-800 rounded-2xl border border-slate-700">
+                  {(['gemini', 'ollama'] as const).map(p => (
+                    <button
+                      key={p}
+                      onClick={() => { setAiProvider(p); localStorage.setItem('cml_ai_provider', p); }}
+                      className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${aiProvider === p ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-400 hover:text-white'}`}
+                    >
+                      {p === 'gemini' ? '✦ Gemini API' : '⬡ Ollama (lokální)'}
+                    </button>
+                  ))}
+                </div>
+                {aiProvider === 'ollama' && (
+                  <div className="mt-3">
+                    <label className="block text-[10px] font-black text-slate-500 uppercase mb-2 tracking-widest">Lokální model</label>
+                    <div className="flex gap-2">
+                      {['llama3.1', 'gemma4:e4'].map(m => (
+                        <button
+                          key={m}
+                          onClick={() => { setOllamaModel(m); localStorage.setItem('cml_ollama_model', m); }}
+                          className={`flex-1 py-2.5 rounded-xl text-xs font-black border transition-all ${ollamaModel === m ? 'bg-emerald-600/20 border-emerald-500 text-emerald-300' : 'bg-slate-800 border-slate-700 text-slate-500 hover:border-slate-500'}`}
+                        >
+                          {m}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[10px] text-slate-600 italic">Ollama musí běžet na localhost:11434. JSON výstupy mohou být méně přesné než u Gemini.</p>
+                  </div>
+                )}
+              </div>
             </div>
 
             <div className="pt-6 border-t border-slate-800 space-y-3">
@@ -1245,6 +1278,8 @@ const App: React.FC = () => {
           }}
           onSave={handleSaveJob}
           onDelete={handleDeleteJob}
+          aiProvider={aiProvider}
+          ollamaModel={ollamaModel}
         />
       )}
     </div>

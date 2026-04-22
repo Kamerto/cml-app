@@ -46,11 +46,38 @@ async function geminiWithFallback(apiKey: string, params: any): Promise<any> {
   throw lastError;
 }
 
+// Ollama lokální model
+async function ollamaChat(model: string, prompt: string, expectJson: boolean = false): Promise<{ text: string }> {
+  const messages = expectJson
+    ? [
+        { role: 'system', content: 'Respond ONLY with valid JSON. No markdown, no explanation, no code blocks. Just the raw JSON object or array.' },
+        { role: 'user', content: prompt }
+      ]
+    : [{ role: 'user', content: prompt }];
+
+  const response = await fetch('http://localhost:11434/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model, messages, stream: false })
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Ollama chyba (${response.status}): ${err}`);
+  }
+
+  const data = await response.json();
+  const text = data.message?.content || '';
+  return { text };
+}
+
 interface JobFormModalProps {
   job: JobData;
   onClose: () => void;
   onSave: (data: JobData, shouldClose?: boolean) => void;
   onDelete: (id: string) => void;
+  aiProvider?: 'gemini' | 'ollama';
+  ollamaModel?: string;
 }
 
 const SUGGESTIONS = {
@@ -210,7 +237,7 @@ const SuggestionInput: React.FC<{
   );
 };
 
-const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete }) => {
+const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete, aiProvider = 'gemini', ollamaModel = 'llama3.1' }) => {
   const [formData, setFormData] = useState<JobData>(() => ({
     ...job,
     jobId: job.jobId || '',
@@ -237,6 +264,20 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     })),
     technology: Array.isArray(job.technology) ? job.technology : [job.technology].filter(Boolean) as ('DIGI' | 'OFSET')[]
   }));
+
+  // Jednotný AI wrapper — přepíná mezi Gemini a Ollama
+  const callAI = async (params: { contents: string; config?: any }): Promise<{ text: string }> => {
+    if (aiProvider === 'ollama') {
+      const expectJson = !!(params.config?.responseMimeType?.includes('json'));
+      return ollamaChat(ollamaModel, params.contents, expectJson);
+    }
+    // Gemini
+    const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
+    if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
+      throw new Error('Není nastaven Gemini API klíč. Nastavte ho v Nastavení Tabule.');
+    }
+    return geminiWithFallback(apiKey, params);
+  };
 
   const [activeTab, setActiveTab] = useState<'details' | 'production'>(
     (job.status === JobStatus.PRODUCTION || job.status === JobStatus.EXPRESS || job.status === JobStatus.READY_FOR_PROD) ? 'production' : 'details'
@@ -326,12 +367,6 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
     setSummaryGenerating(true);
     setSummaryText('');
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        setSummaryText('Není nastaven API klíč. Nastavte ho v hlavním nastavení Tabule.');
-        setSummaryGenerating(false);
-        return;
-      }
       const mailsText = chosen.map((e, i) =>
         `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
       ).join('\n\n');
@@ -344,9 +379,7 @@ Buď stručný a věcný. Piš česky.
 
 EMAILY:
 ${mailsText}`;
-      const result = await geminiWithFallback(apiKey, {
-        contents: prompt,
-      });
+      const result = await callAI({ contents: prompt });
       const text = result.text || 'Nepodařilo se vygenerovat souhrn.';
       setSummaryText(text);
     } catch (e: any) {
@@ -369,12 +402,6 @@ ${mailsText}`;
     if (!chosen.length) return;
     setSummaryGenerating(true);
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        alert('Není nastaven API klíč.');
-        setSummaryGenerating(false);
-        return;
-      }
       const mailsText = chosen.map((e, i) =>
         `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
       ).join('\n\n');
@@ -383,7 +410,7 @@ ${mailsText}`;
         const s = String(val).trim();
         return s.toLowerCase() === 'null' ? '' : s;
       };
-      const response = await geminiWithFallback(apiKey, {
+      const response = await callAI({
         contents: `Jsi asistent tiskárny. Z emailové konverzace níže vyextrahuj technické parametry zakázky.
 DŮLEŽITÉ:
 1. Ber VŽDY nejnovější informace — pokud zákazník něco změnil, použij změnu.
@@ -464,12 +491,6 @@ ${mailsText}`,
     if (!chosen.length) return;
     setSummaryGenerating(true);
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        alert('Není nastaven API klíč.');
-        setSummaryGenerating(false);
-        return;
-      }
       const mailsText = chosen.map((e, i) =>
         `--- Mail ${i + 1} (${e.received_at || e.created_at}) ---\nOd: ${e.sender}\nPředmět: ${e.subject}\n${e.preview}`
       ).join('\n\n');
@@ -478,7 +499,7 @@ ${mailsText}`,
         const s = String(val).trim();
         return s.toLowerCase() === 'null' ? '' : s;
       };
-      const ai_response = await geminiWithFallback(apiKey, {
+      const ai_response = await callAI({
         contents: `Jsi asistent tiskárny. Z emailové konverzace níže vyextrahuj technické parametry výroby.
 DŮLEŽITÉ:
 1. Ber VŽDY nejnovější informace — pokud zákazník něco změnil, použij změnu.
@@ -673,7 +694,7 @@ ${mailsText}`,
 
     setSplittingItemId(itemId);
     try {
-      const response = await geminiWithFallback(apiKey, {
+      const response = await callAI({
         contents: `Analyzuj tuto (pravděpodobně sdruženou) tiskovou položku a rozlož ji zpět na jednotlivé položky, pokud obsahuje více druhů (např. Vizitky a Letáky) nebo pokud popis naznačuje rozdělení (např. pomocí nových řádků nebo oddělovače '---').
 VŽDY vrať JSON pole objektů s touto strukturou:
 [
@@ -774,13 +795,7 @@ Specifikace: ${item.techSpecs}`,
     };
 
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        alert("Není nastaven API klíč. Prosím nastavte ho v hlavním nastavení Tabule (ikona ozubeného kočko v záhlaví).");
-        setIsAiFilling(false);
-        return;
-      }
-      const response = await geminiWithFallback(apiKey, {
+      const response = await callAI({
         contents: `Analýza technické části poptávky.
 DŮLEŽITÉ:
 1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
@@ -862,13 +877,7 @@ Text: "${aiInput}"`,
     };
 
     try {
-      const apiKey = localStorage.getItem('cml_gemini_key') || import.meta.env.VITE_GEMINI_API_KEY;
-      if (!apiKey || apiKey === 'PLACEHOLDER_API_KEY') {
-        alert("Není nastaven API klíč. Prosím nastavte ho v hlavním nastavení Tabule.");
-        setIsAiFilling(false);
-        return;
-      }
-      const response = await geminiWithFallback(apiKey, {
+      const response = await callAI({
         contents: `Analyzuj tento text a extrahuj specifikaci JEDNÉ tiskové položky do JSON.
 DŮLEŽITÉ:
 1. Pro barevnost (colors) používej VŽDY technický zápis (např. '4/4', '4/0').
