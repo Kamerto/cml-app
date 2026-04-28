@@ -1494,6 +1494,24 @@ Text: "${itemAiText}"`,
                             <Map className="w-6 h-6" />
                           </button>
                         </div>
+                        {/* Vyzvedne zákazník */}
+                        <label className="mt-3 flex items-center gap-3 cursor-pointer group">
+                          <div
+                            onClick={() => setFormData(prev => ({ ...prev, pickedUp: !prev.pickedUp }))}
+                            className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all shrink-0 ${
+                              formData.pickedUp
+                                ? 'bg-purple-400 border-purple-300'
+                                : 'bg-slate-800 border-slate-600 group-hover:border-purple-400/50'
+                            }`}
+                          >
+                            {formData.pickedUp && <Check className="w-3 h-3 text-white" />}
+                          </div>
+                          <span className={`text-xs font-black uppercase tracking-wide transition-colors ${
+                            formData.pickedUp ? 'text-purple-300' : 'text-slate-500 group-hover:text-slate-300'
+                          }`}>
+                            Vyzvedne zákazník
+                          </span>
+                        </label>
                       </div>
 
                       <div className="flex flex-col gap-8">

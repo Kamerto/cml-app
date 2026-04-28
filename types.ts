@@ -50,9 +50,9 @@ export interface JobData {
   entry_id?: string;
   store_id?: string;
   outlookId?: string;
-  isNew?: boolean;
   zIndex?: number;
   fromQueue?: boolean;
+  pickedUp?: boolean;
 }
 
 export interface Column {

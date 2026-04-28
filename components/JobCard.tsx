@@ -1,6 +1,6 @@
 import React from 'react';
 import { JobData, JobStatus } from '../types';
-import { Trash2, MapPin, FileText, Cpu, Zap, Folder } from 'lucide-react';
+import { Trash2, MapPin, FileText, Cpu, Zap, Folder, ClipboardCheck } from 'lucide-react';
 import { COLUMNS } from '../constants';
 
 interface JobCardProps {
@@ -96,7 +96,11 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
   };
 
   const getBgClass = () => {
-    if (job.trackingStage === 'completed') return 'bg-purple-600 shadow-[0_0_20px_rgba(147,51,234,0.4)] ring-2 ring-purple-400/50';
+    if (job.trackingStage === 'completed') {
+      if (job.pickedUp) 
+        return 'bg-purple-300 shadow-[0_0_20px_rgba(216,180,254,0.3)] ring-2 ring-purple-200/60';
+      return 'bg-purple-600 shadow-[0_0_20px_rgba(147,51,234,0.4)] ring-2 ring-purple-400/50';
+    }
     if (job.status === JobStatus.EXPRESS) return 'bg-red-600 shadow-[0_0_20px_rgba(220,38,38,0.4)] ring-2 ring-red-400/50';
     if (isUrgent && !job.isFolder) return 'bg-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)] ring-2 ring-rose-400/50';
     if (job.isFolder) return 'bg-amber-600/90';

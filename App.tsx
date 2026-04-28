@@ -1022,6 +1022,11 @@ const App: React.FC = () => {
       }
 
       const updated = prev.map(j => j.id === id ? { ...j, status } : j);
+
+      // explicitní save pro všechny změny statusu
+      const updatedJob = updated.find(j => j.id === id);
+      if (updatedJob) saveToFirebase(updatedJob);
+
       if (status === JobStatus.READY_FOR_PROD) {
         const jobToOpen = updated.find(j => j.id === id);
         if (jobToOpen) {
