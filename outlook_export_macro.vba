@@ -1,5 +1,5 @@
 Sub PoslatDoAplikace()
-    ' VERZE: cml-app-final (CLI Deploy - v2.5.6 Final)
+    ' VERZE: cml-app-final (v2.7.11)
     Dim objMail As Outlook.MailItem
     Dim strID As String
     Dim strSubject As String
@@ -12,40 +12,34 @@ Sub PoslatDoAplikace()
     Dim strReceivedAt As String
     Dim strStoreID As String
 
-    ' 1. Získání mailu
+    ' 1. Získání vybraného e-mailu
     On Error Resume Next
     Set objMail = Application.ActiveExplorer.Selection.Item(1)
     
-    If Err.Number <> 0 Then
-        MsgBox "❌ Chyba při přístupu k výběru e-mailu: " & Err.Description & vbCrLf & _
-               "Ujistěte se, že máte vybraný jeden e-mail v seznamu.", vbCritical
+    If Err.Number <> 0 Or objMail Is Nothing Then
+        MsgBox "❌ Chyba: Ujistěte se, že máte v seznamu vybraný e-mail.", vbCritical
         On Error GoTo 0
         Exit Sub
     End If
     On Error GoTo 0
-    
-    If objMail Is Nothing Then
-        MsgBox "⚠️ Není vybrán žádný e-mail (objekt je prázdný).", vbExclamation
-        Exit Sub
-    End If
 
-    ' 2. ID zakázky
-    zakazkaID = InputBox("Zadejte ID zakázky (nebo nechte prázdné pro NOVOU):", "Odeslání do cml-app-final")
+    ' 2. Dotaz na ID zakázky (volitelné)
+    zakazkaID = InputBox("Zadejte ID zakázky (ponechte PRÁZDNÉ pro vytvoření NOVÉ):", "Odeslání do CML Boardu")
     
-    ' 3. Příprava dat
+    ' 3. Příprava dat z e-mailu
     strID = objMail.EntryID
     strStoreID = objMail.Parent.StoreID
     strSubject = objMail.Subject
-    strBody = Left(objMail.Body, 2000)
+    strBody = Left(objMail.Body, 2500) ' Prvních 2500 znaků pro AI analýzu
     strSender = objMail.SenderName
     strReceivedAt = Format(objMail.ReceivedTime, "yyyy-mm-ddThh:nn:ss") & "Z"
     
-    ' ✅ FINÁLNÍ URL (PRODUKCE)
+    ' ✅ URL tvé aplikace na Vercelu
     url = "https://cml-app-v2-nine.vercel.app/api/incoming"
 
-    ' 4. JSON
+    ' 4. Sestavení JSONu
     payload = "{" & _
-                """zakazka_id"": """ & zakazkaID & """, " & _
+                """zakazka_id"": """ & CleanJSON(zakazkaID) & """, " & _
                 """subject"": """ & CleanJSON(strSubject) & """, " & _
                 """entry_id"": """ & strID & """, " & _
                 """store_id"": """ & strStoreID & """, " & _
@@ -54,54 +48,36 @@ Sub PoslatDoAplikace()
                 """preview"": """ & CleanJSON(strBody) & """" & _
               "}"
 
-    ' 5. Odeslání
-    On Error Resume Next
+    ' 5. Odeslání požadavku
     Set http = CreateObject("MSXML2.ServerXMLHTTP.6.0")
-    If http Is Nothing Then Set http = CreateObject("MSXML2.XMLHTTP")
-    If http Is Nothing Then Set http = CreateObject("Microsoft.XMLHTTP")
-    
-    If http Is Nothing Then
-        MsgBox "❌ Nelze vytvořit HTTP objekt. Kontaktujte správce.", vbCritical
-        Exit Sub
-    End If
-
     http.Open "POST", url, False
     http.setRequestHeader "Content-Type", "application/json"
     
+    ' Timeouts: Resolve, Connect, Send, Receive (v ms)
     On Error Resume Next
-    http.setTimeouts 5000, 5000, 10000, 10000
-    On Error GoTo 0
-    
-    On Error Resume Next
+    http.setTimeouts 5000, 5000, 10000, 15000
     http.Send payload
     
     If Err.Number <> 0 Then
-        MsgBox "❌ Chyba při odesílání: " & Err.Description & vbCrLf & "Pravděpodobně vypršel časový limit (Timeout) nebo server neodpovídá.", vbCritical
+        MsgBox "❌ Chyba komunikace: " & Err.Description, vbCritical
         On Error GoTo 0
         Exit Sub
     End If
     On Error GoTo 0
     
-    If Err.Number = 0 Then
-        Dim cleanResp As String
-        cleanResp = http.responseText
-        If Left(cleanResp, 1) = "?" Then cleanResp = Mid(cleanResp, 2)
-        
-        If http.Status = 200 Then
-            If zakazkaID = "" Then
-                MsgBox "✅ Odesláno do: " & url & vbCrLf & "Jako NOVÁ zakázka." & vbCrLf & "Odpověď: " & cleanResp, vbInformation
-            Else
-                MsgBox "✅ Odesláno do: " & url & vbCrLf & "Připojeno k zakázce " & zakazkaID & vbCrLf & "Odpověď: " & cleanResp, vbInformation
-            End If
+    ' 6. Vyhodnocení odpovědi
+    If http.Status = 200 Then
+        If zakazkaID = "" Then
+            MsgBox "✅ Hotovo! E-mail byl odeslán a AI vytvoří novou kartu na Tabuli.", vbInformation
         Else
-            MsgBox "❌ Chyba serveru (" & http.Status & "): " & cleanResp, vbCritical
+            MsgBox "✅ Hotovo! E-mail byl úspěšně připojen k zakázce: " & zakazkaID, vbInformation
         End If
     Else
-        MsgBox "❌ Chyba komunikace s " & url & ": " & Err.Description, vbCritical
+        MsgBox "❌ Chyba serveru (" & http.Status & "): " & http.responseText, vbCritical
     End If
-    On Error GoTo 0
 End Sub
 
+' Pomocná funkce pro ošetření speciálních znaků v JSONu
 Function CleanJSON(txt As String) As String
     Dim out As String
     out = Replace(txt, "\", "\\")
