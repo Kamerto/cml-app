@@ -3,8 +3,8 @@ import {
   Plus, Search,
   Settings, X, Printer, Trash2,
   Loader2, MapPin, Zap, Navigation,
-  Layers, Maximize, Minimize, FolderSync, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste,
-  StickyNote
+  Layers, Maximize, Minimize, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste,
+  StickyNote, Calendar
 } from 'lucide-react';
 import { JobData, JobStatus, PrintItem, BoardNoteData } from './types';
 import { INITIAL_JOBS } from './constants';
@@ -687,126 +687,64 @@ const App: React.FC = () => {
     return { x, y };
   };
 
-  const handleSmartGrouping = () => {
-    // 1. Zjistíme distrikty všech EXPRES zakázek (Kotvy)
-    const expressJobs = jobs.filter(j => j.status === JobStatus.EXPRESS && getDistrict(j.address));
-    const expressDistricts = new Set(expressJobs.map(j => getDistrict(j.address)));
+  const handleSortByDeadline = () => {
+    const productionJobs = jobs.filter(j => {
+      const isInProduction = j.fromQueue === true || 
+        (j.trackingStage && j.trackingStage !== '');
+      return isInProduction;
+    });
 
-    if (expressDistricts.size === 0) {
-      alert("Pro sdružení dle lokality je nutné mít alespoň jednu zakázku ve stavu EXPRES s platnou adresou v Praze.");
+    if (productionJobs.length === 0) {
+      alert('Žádné zakázky ve výrobě k seřazení.');
       return;
     }
 
-    // Mapa: Distrikt -> [Seznam zakázek, které tam patří]
-    const districtGroups: Record<string, JobData[]> = {};
-
-    // 2. Najdeme všechny zakázky pro dané distrikty (mimo Expres samotných)
-    //    Nebo zahrneme i ostatní Expres?
-    //    Logika: "Přesunout k sobě". 
-    //    Vezmeme hlavní Expres jako kotvu. Ostatní (i další Expres, i běžné) naskládáme k němu.
-
-    jobs.forEach(job => {
-      const dist = getDistrict(job.address);
-      if (dist && expressDistricts.has(dist)) {
-        if (!districtGroups[dist]) districtGroups[dist] = [];
-        districtGroups[dist].push(job);
-      }
+    // Seřadíme podle deadline (prázdný deadline jde na konec)
+    const sorted = [...productionJobs].sort((a, b) => {
+      if (!a.deadline && !b.deadline) return 0;
+      if (!a.deadline) return 1;
+      if (!b.deadline) return -1;
+      return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
     });
 
-    let movedCount = 0;
+    // Rozložení do sloupců – každý sloupec = jeden deadline
+    // Karty se stejným deadlinem jsou ve stejném sloupci (pod sebou)
+    const deadlineGroups: Record<string, typeof sorted> = {};
+    sorted.forEach(job => {
+      const key = job.deadline || 'bez-terminu';
+      if (!deadlineGroups[key]) deadlineGroups[key] = [];
+      deadlineGroups[key].push(job);
+    });
 
-    // 3. Pro každý distrikt provedeme přerovnání
-    const newPositions = new Map<string, { x: number, y: number }>();
+    const startX = 60;
+    const startY = 80;
+    const colWidth = 220;  // šířka sloupce
+    const rowHeight = 220; // výška karty
 
-    Object.entries(districtGroups).forEach(([dist, group]) => {
-      // Najdeme kotvu (první Expres zakázka v tomto distriktu)
-      // Ideálně ta, co je nejvíc vlevo nahoře, nebo prostě první v poli?
-      // Zkusíme najít tu, co má status EXPRESS. Pokud jich je víc, vezmeme první.
-      const anchor = group.find(j => j.status === JobStatus.EXPRESS) || group[0];
+    const newPositions = new Map<string, { x: number; y: number }>();
+    let colIndex = 0;
 
-      // Seřadíme zbytek skupiny (všechny kromě kotvy, nebo včetně?)
-      // Chceme je naskládat kolem kotvy.
-      // Uděláme grid pod kotvou.
-
-      const others = group.filter(j => j.id !== anchor.id);
-
-      if (others.length === 0) return;
-
-      // Layout: Horizontálně DOPRAVA od kotvy, zarovnané na mřížku (40px)
-      // Card width (w-48) ~ 192px. Gap ~ 48px -> Pitch = 240px (6 čtverečků mřížky)
-      const startX = anchor.position.x + 240;
-      const startY = anchor.position.y;
-      const gapX = 240;
-      const gapY = 240; // Řádkování pro "přelomení" (Wrap)
-      const itemsPerRow = 5;
-
-      others.forEach((job, index) => {
-        const row = Math.floor(index / itemsPerRow);
-        const col = index % itemsPerRow;
-
+    Object.entries(deadlineGroups).forEach(([_, group]) => {
+      group.forEach((job, rowIndex) => {
         newPositions.set(job.id, {
-          x: startX + (col * gapX),
-          y: startY + (row * gapY)
+          x: startX + colIndex * colWidth,
+          y: startY + rowIndex * rowHeight
         });
-        movedCount++;
       });
-    });
-
-    if (movedCount === 0) {
-      alert("Nenalezeny žádné další zakázky k přeskupení.");
-      return;
-    }
-
-    // --- COLLISION RESOLUTION ---
-    // Musíme zajistit, aby na nových pozicích (newPositions) nebyly žádné jiné zakázky.
-
-    const allMovedIds = new Set<string>();
-    Object.values(districtGroups).forEach(group => group.forEach(j => allMovedIds.add(j.id)));
-
-    // Iterativně řešíme kolize - "Push Down"
-
-    const resolvedPositions = new Map(newPositions);
-
-    jobs.forEach(job => {
-      // Pokud je zakázka součástí přesouvané skupiny, ignorujeme (její pozice je už v resolvedPositions nebo je kotva)
-      if (allMovedIds.has(job.id)) return;
-
-      let currentPos = job.position;
-      let hasCollision = true;
-      let safetyCounter = 0;
-
-      while (hasCollision && safetyCounter < 50) {
-        hasCollision = false;
-
-        // Koliduje s nějakou novou pozicí? (Distance check < 50px)
-        for (const [movedId, newPos] of resolvedPositions.entries()) {
-          if (Math.abs(currentPos.x - newPos.x) < 50 && Math.abs(currentPos.y - newPos.y) < 50) {
-            hasCollision = true;
-            break;
-          }
-        }
-
-        if (hasCollision) {
-          // Posunout dolů o jeden řádek (240px)
-          currentPos = { ...currentPos, y: currentPos.y + 240 };
-          safetyCounter++;
-        }
-      }
-
-      if (safetyCounter > 0) {
-        resolvedPositions.set(job.id, currentPos); // Uložíme novou odsunutou pozici
-        movedCount++;
-      }
+      colIndex++;
     });
 
     setJobs(prev => prev.map(job => {
-      if (resolvedPositions.has(job.id)) {
-        return { ...job, position: resolvedPositions.get(job.id)! };
+      if (newPositions.has(job.id)) {
+        const newPos = newPositions.get(job.id)!;
+        const updatedJob = { ...job, position: newPos };
+        saveToFirebase(updatedJob);
+        return updatedJob;
       }
       return job;
     }));
 
-    alert(`Uspořádáno ${movedCount} zakázek (včetně odsunutí překážejících karet).`);
+    alert(`Seřazeno ${productionJobs.length} zakázek ve výrobě podle termínu.`);
   };
 
   const getDistrict = (address: string = '') => {
@@ -1125,9 +1063,9 @@ const App: React.FC = () => {
             <Settings className="w-4 h-4 text-slate-400" />
             <span className="hidden xl:inline">Nastavení</span>
           </button>
-          <button onClick={handleSmartGrouping} title="Přesune vizuálně zakázky k Expres zakázkám stejného obvodu" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
-            <FolderSync className="w-4 h-4 text-amber-400" />
-            <span className="hidden lg:inline">Sdružit k Expresu</span>
+          <button onClick={handleSortByDeadline} title="Seřadí zakázky ve výrobě do sloupců podle termínu" className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold border border-slate-700 transition-all">
+            <Calendar className="w-4 h-4 text-emerald-400" />
+            <span className="hidden lg:inline">Srovnat dle termínu</span>
           </button>
           <div className="flex items-center gap-2 ml-1">
             <button onClick={handleCreateNote} className="flex items-center justify-center p-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 shadow-lg shadow-amber-900/40 active:scale-95 transition-all w-8 h-8 md:w-auto md:px-4 md:py-2">
