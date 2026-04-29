@@ -707,31 +707,25 @@ const App: React.FC = () => {
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
     });
 
-    // Rozložení do sloupců – každý sloupec = jeden deadline
-    // Karty se stejným deadlinem jsou ve stejném sloupci (pod sebou)
-    const deadlineGroups: Record<string, typeof sorted> = {};
-    sorted.forEach(job => {
-      const key = job.deadline || 'bez-terminu';
-      if (!deadlineGroups[key]) deadlineGroups[key] = [];
-      deadlineGroups[key].push(job);
-    });
-
     const startX = 60;
     const startY = 80;
-    const colWidth = 220;  // šířka sloupce
-    const rowHeight = 220; // výška karty
+    const colWidth = 220;
+    const rowHeight = 220;
 
     const newPositions = new Map<string, { x: number; y: number }>();
     let colIndex = 0;
+    let currentRow = 0;
 
-    Object.entries(deadlineGroups).forEach(([_, group]) => {
-      group.forEach((job, rowIndex) => {
-        newPositions.set(job.id, {
-          x: startX + colIndex * colWidth,
-          y: startY + rowIndex * rowHeight
-        });
+    sorted.forEach((job) => {
+      if (currentRow >= 5) {
+        colIndex++;
+        currentRow = 0;
+      }
+      newPositions.set(job.id, {
+        x: startX + colIndex * colWidth,
+        y: startY + currentRow * rowHeight
       });
-      colIndex++;
+      currentRow++;
     });
 
     setJobs(prev => prev.map(job => {
