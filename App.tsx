@@ -109,33 +109,26 @@ const App: React.FC = () => {
       const cleanJob = sanitize(job);
 
       // 1. AKTUALIZACE SOUKROMÉ TABULE (BOARD_CARDS_COLLECTION)
-      let currentFireId = job.fireId;
-      if (currentFireId) {
-        // Máme ID, updatujeme přímo
-        await updateDoc(doc(db, BOARD_CARDS_COLLECTION, currentFireId), { ...cleanJob, fireId: currentFireId, lastUpdated: serverTimestamp() });
-        console.log('Firebase BOARD UPDATE (Direct):', job.jobId);
-      } else {
-        // Nemáme ID, musíme najít nebo vytvořit
-        const boardQuery = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', job.jobId));
-        const boardSnap = await getDocs(boardQuery);
-        if (!boardSnap.empty) {
-          currentFireId = boardSnap.docs[0].id;
-          await updateDoc(boardSnap.docs[0].ref, { ...cleanJob, fireId: currentFireId, lastUpdated: serverTimestamp() });
-          console.log('Firebase BOARD UPDATE (Query):', job.jobId);
-        } else {
-          const newDocRef = doc(collection(db, BOARD_CARDS_COLLECTION));
-          await setDoc(newDocRef, { ...cleanJob, fireId: newDocRef.id, created_at: serverTimestamp() });
-          currentFireId = newDocRef.id;
-          console.log('Firebase BOARD CREATE:', job.jobId);
-        }
-      }
+      // OPRAVA: Použijeme deterministické ID i pro tabuli, aby to sedělo s frontou
+      const safeId = job.jobId.trim().replace(/\//g, '_');
+      let currentFireId = safeId;
+      
+      await setDoc(doc(db, BOARD_CARDS_COLLECTION, safeId), { 
+        ...cleanJob, 
+        fireId: safeId, 
+        lastUpdated: serverTimestamp() 
+      }, { merge: true });
+      
+      console.log('Firebase BOARD SYNC (Deterministic ID):', job.jobId);
 
       // 2. AKTUALIZACE SPOLEČNÉ FRONTY (PUBLIC_ORDERS_COLLECTION / orders)
       // UNIFIED ID STRATEGY: Použijeme stejné ID dokumentu jako v Tabuli
       // Syncujeme pokud je zakázka sledována (isTracked) NEBO pochází z fronty (fromQueue)
       if ((job.isTracked || job.fromQueue) && currentFireId && !skipPublicSync) {
         // Použijeme jobId jako ID dokumentu, aby to sedělo s Frontou (a nedocházelo k duplicitám)
-        const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, job.jobId.trim());
+        // OPRAVA: Lomítka v jobId by vytvořila podkolekce, nahradíme je podtržítkem
+        const safeDocId = job.jobId.trim().replace(/\//g, '_');
+        const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, safeDocId);
 
         // --- MAPPING FOR QUEUE APP COMPATIBILITY ---
         const queueMapping = {
@@ -174,11 +167,23 @@ const App: React.FC = () => {
   // Smazání zakázky z Firebase
   const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string, outlookId?: string) => {
     try {
-      if (fireId) {
+      const id = (orderId || jobId).trim();
+      const safeId = id.replace(/\//g, '_');
+
+      // 1. Smazání z tabule
+      await deleteDoc(doc(db, BOARD_CARDS_COLLECTION, safeId));
+      // Také zkusíme fireId pokud je jiné (pro staré karty)
+      if (fireId && fireId !== safeId) {
         await deleteDoc(doc(db, BOARD_CARDS_COLLECTION, fireId));
-        await deleteDoc(doc(db, PUBLIC_ORDERS_COLLECTION, fireId));
-        console.log('Smazáno z obou kolekcí (Unified Doc ID):', fireId);
       }
+
+      // 2. Smazání z veřejné fronty
+      await deleteDoc(doc(db, PUBLIC_ORDERS_COLLECTION, safeId));
+      if (fireId && fireId !== safeId) {
+        await deleteDoc(doc(db, PUBLIC_ORDERS_COLLECTION, fireId));
+      }
+
+      console.log('Smazáno z obou kolekcí (Unified Safe ID):', safeId);
       
       // Vždy také smažeme podle jobId z fronty (pro zakázky importované z fronty)
       const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), 
