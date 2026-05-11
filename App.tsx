@@ -682,7 +682,12 @@ const App: React.FC = () => {
   const handleSortByDeadline = () => {
     const productionJobs = jobs.filter(j => {
       const isInProduction = j.fromQueue === true || 
-        (j.trackingStage && j.trackingStage !== '');
+      (j.trackingStage && j.trackingStage !== '') ||
+      (
+        j.jobId && !j.jobId.startsWith('TEMP-') &&  // má reálné číslo zakázky
+        j.deadline && j.deadline !== '' &&            // má termín
+        j.technology && j.technology.length > 0       // má technologii
+      );
       return isInProduction;
     });
 
