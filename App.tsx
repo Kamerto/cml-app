@@ -887,7 +887,13 @@ const App: React.FC = () => {
   const handleSaveJob = (data: JobData, shouldClose = true) => {
     // Pokud se mění z TEMP ID na reálné, přepojujeme emaily
     const previousJob = jobs.find(j => j.id === data.id);
-    if (previousJob && previousJob.jobId !== data.jobId) {
+    
+    // --- PŘEČÍSLOVÁNÍ (Smazání starého záznamu při změně jobId) ---
+    if (previousJob && previousJob.jobId && previousJob.jobId !== data.jobId) {
+      console.log(`🔄 Přečíslování: Mažu starý záznam ${previousJob.jobId} a vytvářím ${data.jobId}`);
+      deleteFromFirebase(previousJob.jobId, previousJob.jobId, previousJob.fireId, previousJob.outlookId);
+      
+      // Email mapping fix
       updateEmailsJobId(previousJob.jobId, data.jobId, data.outlookId);
     }
 
