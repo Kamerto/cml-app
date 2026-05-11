@@ -4,16 +4,16 @@ const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { GoogleGenAI } = require('@google/genai');
 
-const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n').trim();
 console.log('KEY_CHECK:', privateKey?.substring(0, 50));
-console.log('EMAIL_CHECK:', process.env.FIREBASE_CLIENT_EMAIL);
+console.log('EMAIL_CHECK:', process.env.FIREBASE_CLIENT_EMAIL?.trim());
 
 const app = getApps().length 
     ? getApps()[0] 
     : initializeApp({
         credential: cert({
-            projectId: process.env.FIREBASE_PROJECT_ID,
-            clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+            projectId: process.env.FIREBASE_PROJECT_ID?.trim(),
+            clientEmail: process.env.FIREBASE_CLIENT_EMAIL?.trim(),
             privateKey: privateKey,
         }),
     });
