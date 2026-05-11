@@ -977,7 +977,10 @@ const App: React.FC = () => {
     if (!id || id === '???' || id === 'id?' || id === 'null' || id === 'undefined') return false;
 
     const isInProduction = j.fromQueue === true || 
-      (j.trackingStage && j.trackingStage !== '');
+      (j.trackingStage && j.trackingStage !== '') ||
+      j.status === JobStatus.READY_FOR_PROD ||
+      j.status === JobStatus.EXPRESS ||
+      j.status === JobStatus.COMPLETED;
     
     if (activePage === 1 && isInProduction) return false;
     if (activePage === 2 && !isInProduction) return false;
