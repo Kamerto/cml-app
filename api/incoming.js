@@ -5,6 +5,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { GoogleGenAI } = require('@google/genai');
 
 // Initialize Firebase Admin
+getApps().forEach(app => app.delete());
 if (!getApps().length) {
     console.log('KEY_CHECK:', process.env.FIREBASE_PRIVATE_KEY?.substring(0, 50));
     console.log('EMAIL_CHECK:', process.env.FIREBASE_CLIENT_EMAIL);
