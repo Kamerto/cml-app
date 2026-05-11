@@ -683,6 +683,9 @@ const App: React.FC = () => {
     const productionJobs = jobs.filter(j => {
       const isInProduction = j.fromQueue === true || 
       (j.trackingStage && j.trackingStage !== '') ||
+      j.status === 'Výroba' ||
+      j.status === 'Připraveno k výrobě' ||
+      j.status === 'Expres' ||
       (
         j.jobId && !j.jobId.startsWith('TEMP-') &&  // má reálné číslo zakázky
         j.deadline && j.deadline !== '' &&            // má termín
