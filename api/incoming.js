@@ -6,6 +6,9 @@ const { GoogleGenAI } = require('@google/genai');
 
 // Initialize Firebase Admin
 if (!getApps().length) {
+    console.log('KEY_CHECK:', process.env.FIREBASE_PRIVATE_KEY?.substring(0, 50));
+    console.log('EMAIL_CHECK:', process.env.FIREBASE_CLIENT_EMAIL);
+    console.log('PROJECT_CHECK:', process.env.FIREBASE_PROJECT_ID);
     initializeApp({
         credential: cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
