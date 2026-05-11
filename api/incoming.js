@@ -4,22 +4,21 @@ const { initializeApp, getApps, cert } = require('firebase-admin/app');
 const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { GoogleGenAI } = require('@google/genai');
 
-// Initialize Firebase Admin
-getApps().forEach(app => app.delete());
-if (!getApps().length) {
-    console.log('KEY_CHECK:', process.env.FIREBASE_PRIVATE_KEY?.substring(0, 50));
-    console.log('EMAIL_CHECK:', process.env.FIREBASE_CLIENT_EMAIL);
-    console.log('PROJECT_CHECK:', process.env.FIREBASE_PROJECT_ID);
-    initializeApp({
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+console.log('KEY_CHECK:', privateKey?.substring(0, 50));
+console.log('EMAIL_CHECK:', process.env.FIREBASE_CLIENT_EMAIL);
+
+const app = getApps().length 
+    ? getApps()[0] 
+    : initializeApp({
         credential: cert({
             projectId: process.env.FIREBASE_PROJECT_ID,
             clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-            privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            privateKey: privateKey,
         }),
     });
-}
 
-const db = getFirestore();
+const db = getFirestore(app);
 
 // Detekce sandbox módu
 const IS_SANDBOX = process.env.VITE_MOCK_MODE === 'true';
