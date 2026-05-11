@@ -57,6 +57,7 @@ const App: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [minBoardHeight, setMinBoardHeight] = useState(2000);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [activePage, setActivePage] = useState<1 | 2>(1);
   const [manualApiKey, setManualApiKey] = useState(() => localStorage.getItem('cml_gemini_key') || '');
@@ -99,12 +100,23 @@ const App: React.FC = () => {
   // --- FIREBASE HELPER FUNKCE --- 
 
   const saveToFirebase = async (job: JobData, skipPublicSync = false) => {
-    console.log('💾 saveToFirebase:', job.jobId, 'isTracked:', job.isTracked, 'skipPublicSync:', skipPublicSync);
     if (!job.jobId) return;
+    const trimmedId = job.jobId.trim();
+    const safeIdCheck = trimmedId.replace(/\//g, '_');
+    // Povolíme: platné číslo zakázky (NNNNN_RR), dočasné ID (TEMP-/OUT-/SBX-)
+    // Blokujeme: neúplná čísla (jen číslice bez roku, nebo s prázdným rokem)
+    const isValidJobNumber = /^\d+_\d{2,}$/.test(safeIdCheck);
+    const isTempId = /^(TEMP|OUT|SBX)-/i.test(trimmedId);
+    if (!isValidJobNumber && !isTempId) {
+      console.log('⚠️ Přeskočeno uložení — neplatný formát čísla zakázky:', job.jobId);
+      return;
+    }
+    console.log('💾 saveToFirebase:', job.jobId, 'isTracked:', job.isTracked, 'skipPublicSync:', skipPublicSync);
     try {
-      // Odstraníme undefined hodnoty které Firebase odmítá
+      // Odstraníme undefined hodnoty které Firebase odmítá.
+      // fromQueue: false nezapisujeme — merge: true by přepsal true zpět na false.
       const sanitize = (obj: any) => Object.fromEntries(
-        Object.entries(obj).filter(([_, v]) => v !== undefined)
+        Object.entries(obj).filter(([k, v]) => v !== undefined && !(k === 'fromQueue' && v === false))
       );
       const cleanJob = sanitize(job);
 
@@ -133,9 +145,12 @@ const App: React.FC = () => {
         // --- MAPPING FOR QUEUE APP COMPATIBILITY ---
         const queueMapping = {
           orderNumber: job.jobId || (job as any).orderNumber || "",
+          // clientName = kombinace pro zobrazení, customer = čisté jméno pro sync
           clientName: job.customer ? (job.customer + (job.jobName ? " / " + job.jobName : "")) : ((job as any).clientName || ""),
+          customer: job.customer || "",
           currentStage: job.trackingStage || (job as any).currentStage || "studio",
           printType: Array.isArray(job.technology) ? job.technology : ((job as any).printType || []),
+          technology: Array.isArray(job.technology) ? job.technology : ((job as any).technology || []),
           deadline: job.deadline || "",
         };
 
@@ -518,35 +533,64 @@ const App: React.FC = () => {
       const modifiedChanges = changes.filter(c => c.type === 'modified');
       const removedChanges = changes.filter(c => c.type === 'removed');
 
+      const normalizeTech = (arr: string[]) => arr.map((t: string) => {
+        const lower = t.toLowerCase();
+        if (lower === 'offset' || lower === 'o') return 'OFSET';
+        if (lower === 'digital' || lower === 'd') return 'DIGI';
+        return t;
+      });
+
       // --- AUTO-IMPORT: Nové zakázky z fronty → Tabule ---
       if (addedChanges.length > 0) {
         const boardSnap = await getDocs(query(collection(db, BOARD_CARDS_COLLECTION)));
-        const existingJobIds = new Set(
-          boardSnap.docs.map(d => (d.data().jobId || '').trim()).filter(Boolean)
-        );
-
-        const normalizeTech = (arr: string[]) => arr.map((t: string) => {
-          const lower = t.toLowerCase();
-          if (lower === 'offset' || lower === 'o') return 'OFSET';
-          if (lower === 'digital' || lower === 'd') return 'DIGI';
-          return t;
+        // Indexujeme board karty TŘEMI způsoby pro robustní matching:
+        // 1. jobId pole (přesně)  2. safeId z jobId (/ → _)  3. fireId pole
+        const toSafe = (s: string) => s.replace(/\//g, '_');
+        const boardByJobId = new Map<string, typeof boardSnap.docs[0]>();
+        const boardBySafe = new Map<string, typeof boardSnap.docs[0]>();
+        boardSnap.docs.forEach(d => {
+          const jid = (d.data().jobId || '').trim();
+          if (jid) { boardByJobId.set(jid, d); boardBySafe.set(toSafe(jid), d); }
+          const fid = (d.data().fireId || '').trim();
+          if (fid) boardBySafe.set(fid, d);
         });
+        const findBoardDoc = (id: string) =>
+          boardByJobId.get(id) || boardBySafe.get(toSafe(id)) || boardBySafe.get(id);
 
         for (const change of addedChanges) {
           const data = change.doc.data() as any;
           const jobId = (data.jobId || data.orderNumber || '').trim();
           if (!jobId || jobId === '???' || jobId === 'null' || jobId === 'undefined') continue;
-          // Kontrolujeme jobId i orderNumber (zakázky z fronty mohou používat obojí)
-          if (existingJobIds.has(jobId) || (data.orderNumber && existingJobIds.has(data.orderNumber.trim()))) continue;
+
+          const existingDoc = findBoardDoc(jobId);
+          if (existingDoc) {
+            // Karta v boardu už existuje — synchronizujeme fromQueue + klíčová pole z fronty
+            const existing = existingDoc.data();
+            const syncFields: Record<string, any> = { lastUpdated: serverTimestamp() };
+            if (!existing.fromQueue) syncFields.fromQueue = true;
+            syncFields.trackingStage = data.currentStage || data.trackingStage || existing.trackingStage || 'studio';
+            const customer = data.customer || data.clientName;
+            if (customer && !existing.customer) syncFields.customer = customer;
+            const rawTech = data.printType || data.technology;
+            if (rawTech?.length && (!existing.technology || !existing.technology.length)) syncFields.technology = normalizeTech(rawTech);
+            const deadline = data.deadline || data.deliveryDate;
+            if (deadline && !existing.deadline) syncFields.deadline = deadline;
+            updateDoc(existingDoc.ref, syncFields)
+              .catch(e => console.warn('❌ fromQueue sync FAIL:', e));
+            // Také přidáme do setu aby se nepokusil o duplicitní import
+            boardByJobId.set(jobId, existingDoc);
+            boardBySafe.set(toSafe(jobId), existingDoc);
+            continue;
+          }
 
           const newJob: JobData = {
             id: Math.random().toString(36).substring(2, 11),
             jobId,
-            customer: data.clientName || data.customer || '',
+            customer: data.customer || data.clientName || '',
             jobName: data.jobName || '',
             address: data.address || '',
             dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
-            deadline: data.deadline || '',
+            deadline: data.deadline || data.deliveryDate || '',
             technology: normalizeTech(data.printType || data.technology || []) as ('DIGI' | 'OFSET' | 'KOOP')[],
             status: data.status || JobStatus.INQUIRY,
             position: { x: 100, y: 100 },
@@ -567,32 +611,47 @@ const App: React.FC = () => {
 
           // Zapíšeme do tabule — board listener zachytí 'added' a přidá do state
           await saveToFirebase(newJob, true);
-          existingJobIds.add(jobId); // Zabránění duplicitám v rámci dávky
-          if (data.orderNumber) existingJobIds.add(data.orderNumber.trim()); // Také orderNumber
+          boardByJobId.set(jobId, null as any); // Zabránění duplicitám v dávce
+          boardBySafe.set(toSafe(jobId), null as any);
+          if (data.orderNumber) boardBySafe.set(toSafe(data.orderNumber.trim()), null as any);
           console.log(`✅ Auto-importována zakázka: ${newJob.jobId}`);
         }
       }
 
-      // --- SYNC: Změna stavu výroby z fronty → Tabule ---
+      // --- SYNC: Změna dat z fronty → Tabule (stage, zákazník, technologie, termín) ---
       modifiedChanges.forEach(change => {
         const data = change.doc.data() as any;
-        const incomingStage = data.currentStage;
         const jobId = (data.jobId || data.orderNumber || '').trim();
-        if (!incomingStage || !jobId) return;
+        if (!jobId) return;
 
-        console.log('🔄 Orders modified:', { jobId, incomingStage, docId: change.doc.id });
+        const syncFields: Record<string, any> = { lastUpdated: serverTimestamp() };
+        if (data.currentStage) syncFields.trackingStage = data.currentStage;
+        const customer = data.customer || data.clientName;
+        if (customer) syncFields.customer = customer;
+        const rawTech = data.printType || data.technology;
+        if (rawTech?.length) syncFields.technology = normalizeTech(rawTech);
+        const deadline = data.deadline || data.deliveryDate;
+        if (deadline) syncFields.deadline = deadline;
 
-        const boardQuery = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', jobId));
-        getDocs(boardQuery).then(snap => {
-          if (snap.empty) {
-            console.warn('❌ Stage sync FAIL - karta nenalezena:', jobId);
+        const safeJobId = jobId.replace(/\//g, '_');
+        // Hledáme kartu přes jobId i přes fireId (robustní pro / vs _ rozdíl)
+        Promise.all([
+          getDocs(query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', jobId))),
+          getDocs(query(collection(db, BOARD_CARDS_COLLECTION), where('fireId', '==', safeJobId))),
+        ]).then(([byJobId, byFireId]) => {
+          const seen = new Set<string>();
+          const allDocs = [...byJobId.docs, ...byFireId.docs].filter(d => {
+            if (seen.has(d.id)) return false;
+            seen.add(d.id);
+            return true;
+          });
+          if (allDocs.length === 0) {
+            console.warn('❌ Orders sync FAIL - karta nenalezena:', jobId);
             return;
           }
-          snap.docs.forEach(d => {
-            updateDoc(d.ref, { trackingStage: incomingStage, lastUpdated: serverTimestamp() });
-          });
-          console.log(`✅ Stage sync OK: ${jobId} → ${incomingStage}`);
-        }).catch(e => console.warn('❌ Stage sync FAIL:', e));
+          allDocs.forEach(d => updateDoc(d.ref, syncFields));
+          console.log(`✅ Orders sync OK: ${jobId}`);
+        }).catch(e => console.warn('❌ Orders sync FAIL:', e));
       });
 
       // --- SMAZÁNÍ z fronty → smaž i z tabule ---
@@ -686,7 +745,8 @@ const App: React.FC = () => {
 
   const handleSortByDeadline = () => {
     const productionJobs = jobs.filter(j => {
-      const isInProduction = j.fromQueue === true || 
+      const isInProduction = j.fromQueue === true ||
+      j.isTracked === true ||
       (j.trackingStage && j.trackingStage !== '') ||
       j.status === JobStatus.READY_FOR_PROD ||
       j.status === JobStatus.EXPRESS ||
@@ -707,26 +767,26 @@ const App: React.FC = () => {
       return new Date(a.deadline).getTime() - new Date(b.deadline).getTime();
     });
 
+    const CARDS_PER_ROW = 7;
     const startX = 60;
     const startY = 80;
     const colWidth = 220;
     const rowHeight = 220;
 
     const newPositions = new Map<string, { x: number; y: number }>();
-    let colIndex = 0;
-    let currentRow = 0;
 
-    sorted.forEach((job) => {
-      if (currentRow >= 5) {
-        colIndex++;
-        currentRow = 0;
-      }
+    sorted.forEach((job, index) => {
+      const col = index % CARDS_PER_ROW;
+      const row = Math.floor(index / CARDS_PER_ROW);
       newPositions.set(job.id, {
-        x: startX + colIndex * colWidth,
-        y: startY + currentRow * rowHeight
+        x: startX + col * colWidth,
+        y: startY + row * rowHeight
       });
-      currentRow++;
     });
+
+    const numRows = Math.ceil(sorted.length / CARDS_PER_ROW);
+    const neededHeight = startY + numRows * rowHeight + 300;
+    setMinBoardHeight(Math.max(2000, neededHeight));
 
     setJobs(prev => prev.map(job => {
       if (newPositions.has(job.id)) {
@@ -987,12 +1047,13 @@ const App: React.FC = () => {
     const id = (j.jobId || '').toLowerCase().trim();
     if (!id || id === '???' || id === 'id?' || id === 'null' || id === 'undefined') return false;
 
-    const isInProduction = j.fromQueue === true || 
+    const isInProduction = j.fromQueue === true ||
+      j.isTracked === true ||
       (j.trackingStage && j.trackingStage !== '') ||
       j.status === JobStatus.READY_FOR_PROD ||
       j.status === JobStatus.EXPRESS ||
       j.status === JobStatus.COMPLETED;
-    
+
     if (activePage === 1 && isInProduction) return false;
     if (activePage === 2 && !isInProduction) return false;
 
@@ -1104,7 +1165,7 @@ const App: React.FC = () => {
             : 'radial-gradient(circle, #334155 1px, transparent 1px)',
           backgroundSize: '40px 40px',
           minWidth: '2000px',
-          minHeight: '2000px'
+          minHeight: `${minBoardHeight}px`
         }}
       >
         {filteredJobs.map(job => (
