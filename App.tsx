@@ -7,7 +7,7 @@ import {
   StickyNote, Calendar
 } from 'lucide-react';
 import { JobData, JobStatus, PrintItem, BoardNoteData } from './types';
-import { INITIAL_JOBS } from './constants';
+
 import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
 import BoardNote from './components/BoardNote';
@@ -50,14 +50,9 @@ import LoginPage from './components/LoginPage';
 
 const App: React.FC = () => {
   const VERSION = 'v3.1.1-LIVE';
-  const [jobs, setJobs] = useState<JobData[]>(() => {
-    const saved = localStorage.getItem('cml_jobs_v3');
-    return saved ? JSON.parse(saved) : INITIAL_JOBS;
-  });
-  const [notes, setNotes] = useState<BoardNoteData[]>(() => {
-    const saved = localStorage.getItem('cml_notes_v1');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Žádný localStorage — jediný zdroj pravdy je Firebase
+  const [jobs, setJobs] = useState<JobData[]>([]);
+  const [notes, setNotes] = useState<BoardNoteData[]>([]);
   const [selectedJob, setSelectedJob] = useState<JobData | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -82,13 +77,7 @@ const App: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  useEffect(() => {
-    localStorage.setItem('cml_jobs_v3', JSON.stringify(jobs));
-  }, [jobs]);
 
-  useEffect(() => {
-    localStorage.setItem('cml_notes_v1', JSON.stringify(notes));
-  }, [notes]);
 
   useEffect(() => {
     if (MOCK_MODE) return;
@@ -143,16 +132,18 @@ const App: React.FC = () => {
 
       // 2. AKTUALIZACE SPOLEČNÉ FRONTY (PUBLIC_ORDERS_COLLECTION / orders)
       // UNIFIED ID STRATEGY: Použijeme stejné ID dokumentu jako v Tabuli
-      if (job.isTracked && currentFireId && !skipPublicSync && !job.fromQueue) {
-        // Použijeme setDoc místo addDoc, aby ID bylo stejné jako na Tabuli
-        const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, currentFireId);
+      // Syncujeme pokud je zakázka sledována (isTracked) NEBO pochází z fronty (fromQueue)
+      if ((job.isTracked || job.fromQueue) && currentFireId && !skipPublicSync) {
+        // Použijeme jobId jako ID dokumentu, aby to sedělo s Frontou (a nedocházelo k duplicitám)
+        const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, job.jobId.trim());
 
         // --- MAPPING FOR QUEUE APP COMPATIBILITY ---
         const queueMapping = {
           orderNumber: job.jobId || (job as any).orderNumber || "",
           clientName: job.customer ? (job.customer + (job.jobName ? " / " + job.jobName : "")) : ((job as any).clientName || ""),
           currentStage: job.trackingStage || (job as any).currentStage || "studio",
-          printType: Array.isArray(job.technology) ? job.technology : ((job as any).printType || [])
+          printType: Array.isArray(job.technology) ? job.technology : ((job as any).printType || []),
+          deadline: job.deadline || "",
         };
 
         await setDoc(publicDocRef, {
@@ -162,6 +153,17 @@ const App: React.FC = () => {
           lastUpdated: serverTimestamp()
         });
         console.log('Firebase PUBLIC SYNC (Unified ID + Mapping):', job.jobId);
+
+        // Vyčistíme staré duplicitní dokumenty z fronty (původní záznamy bez fireId)
+        const dupQuery = query(collection(db, PUBLIC_ORDERS_COLLECTION),
+          where('orderNumber', '==', queueMapping.orderNumber));
+        const dupSnap = await getDocs(dupQuery);
+        dupSnap.docs.forEach(d => {
+          if (d.id !== currentFireId) {
+            deleteDoc(d.ref);
+            console.log('🧹 Smazán duplicitní záznam z fronty:', d.id, '(ponechán:', currentFireId, ')');
+          }
+        });
       }
       return currentFireId;
     } catch (e) {
@@ -497,93 +499,26 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // --- SYNC: Sledování stavu výroby z fronty (orders) zpět na Tabuli ---
+  // --- FIREBASE SYNC: Fronta (PUBLIC_ORDERS) → Tabule (jeden unified listener) ---
+  // Princip: tento listener NIKDY nevolá setJobs přímo.
+  // Pouze zapisuje do BOARD_CARDS_COLLECTION → board listener pak aktualizuje state.
   useEffect(() => {
     const q = query(collection(db, PUBLIC_ORDERS_COLLECTION));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      console.log('🔍 Orders snapshot:', snapshot.docChanges().length, 'změn');
+    const unsubscribe = onSnapshot(q, async (snapshot) => {
       const changes = snapshot.docChanges();
       if (changes.length === 0) return;
 
-        changes.forEach(change => {
-          if (change.type === 'removed') {
-            const data = change.doc.data() as any;
-            const removedJobId = data.jobId || data.orderNumber;
-            if (!removedJobId) return;
-            
-            setJobs(prev => {
-              const job = prev.find(j => j.jobId === removedJobId);
-              if (!job) return prev;
-              // Smažeme z board kolekce
-              if (job.fireId) deleteDoc(doc(db, BOARD_CARDS_COLLECTION, job.fireId));
-              return prev.filter(j => j.jobId !== removedJobId);
-            });
-            console.log('🗑️ Zakázka smazána z fronty, odstraněna i z tabule:', removedJobId);
-          }
+      const addedChanges = changes.filter(c => c.type === 'added');
+      const modifiedChanges = changes.filter(c => c.type === 'modified');
+      const removedChanges = changes.filter(c => c.type === 'removed');
 
-          if (change.type !== 'modified') return;
-
-          const data = change.doc.data() as any;
-          const incomingStage = data.currentStage;
-          const jobId = data.jobId || data.orderNumber;
-
-          console.log('🔄 Orders modified:', { 
-            jobId, 
-            incomingStage, 
-            docId: change.doc.id
-          });
-
-          if (!incomingStage || !jobId) return;
-
-          // Najdeme kartu na tabuli podle jobId (spolehlivější než fireId pro importy)
-          const boardQuery = query(
-            collection(db, BOARD_CARDS_COLLECTION), 
-            where('jobId', '==', jobId)
-          );
-          getDocs(boardQuery).then(snap => {
-            if (snap.empty) {
-              console.warn('❌ Stage sync FAIL - karta nenalezena pro jobId:', jobId);
-              return;
-            }
-            snap.docs.forEach(d => {
-              updateDoc(d.ref, { 
-                trackingStage: incomingStage,
-                lastUpdated: serverTimestamp()
-              });
-            });
-            console.log(`✅ Stage sync OK: ${jobId} -> ${incomingStage}`);
-          }).catch(e => {
-            console.warn('❌ Stage sync FAIL:', e);
-          });
-        });
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // --- AUTO-IMPORT: Zakázky z fronty → Tabule (Reálný čas) ---
-  useEffect(() => {
-    const q = query(collection(db, PUBLIC_ORDERS_COLLECTION));
-    
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const newDocs = snapshot.docChanges().filter(c => c.type === 'added');
-      if (newDocs.length === 0) return;
-
-      const boardSnap = await getDocs(query(collection(db, BOARD_CARDS_COLLECTION)));
-      const existingJobIds = new Set(
-        boardSnap.docs.map(d => (d.data().jobId || '').trim()).filter(Boolean)
-      );
-
-      for (const change of newDocs) {
-        const data = change.doc.data() as any;
-        const jobId = (data.jobId || data.orderNumber || '').trim();
-        
-        if (!jobId || jobId === '???' || jobId === 'null' || jobId === 'undefined') continue;
-        if (existingJobIds.has(jobId)) continue;
-
-        const batchPositions: { x: number, y: number }[] = [];
-        const pos = getNewJobPosition(batchPositions);
+      // --- AUTO-IMPORT: Nové zakázky z fronty → Tabule ---
+      if (addedChanges.length > 0) {
+        const boardSnap = await getDocs(query(collection(db, BOARD_CARDS_COLLECTION)));
+        const existingJobIds = new Set(
+          boardSnap.docs.map(d => (d.data().jobId || '').trim()).filter(Boolean)
+        );
 
         const normalizeTech = (arr: string[]) => arr.map((t: string) => {
           const lower = t.toLowerCase();
@@ -592,42 +527,99 @@ const App: React.FC = () => {
           return t;
         });
 
-        const newJob: JobData = {
-          id: Math.random().toString(36).substring(2, 11),
-          jobId,
-          customer: data.clientName || data.customer || '',
-          jobName: data.jobName || '',
-          address: data.address || '',
-          dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
-          deadline: data.deadline || '',
-          technology: normalizeTech(data.printType || data.technology || []) as ('DIGI' | 'OFSET')[],
-          status: data.status || JobStatus.INQUIRY,
-          position: pos,
-          isNew: false,
-          isTracked: false,
-          fromQueue: true,
-          trackingStage: data.currentStage || data.trackingStage || 'studio',
-          zIndex: Date.now(),
-          items: data.items || [],
-          bindingType: data.bindingType || '',
-          laminationType: data.laminationType || '',
-          processing: data.processing || '',
-          cooperation: data.cooperation || '',
-          shippingNotes: data.shippingNotes || '',
-          generalNotes: data.generalNotes || '',
-          icon: data.icon || 'FileText',
-        };
+        for (const change of addedChanges) {
+          const data = change.doc.data() as any;
+          const jobId = (data.jobId || data.orderNumber || '').trim();
+          if (!jobId || jobId === '???' || jobId === 'null' || jobId === 'undefined') continue;
+          // Kontrolujeme jobId i orderNumber (zakázky z fronty mohou používat obojí)
+          if (existingJobIds.has(jobId) || (data.orderNumber && existingJobIds.has(data.orderNumber.trim()))) continue;
 
-        const fireId = await saveToFirebase(newJob, true);
-        if (fireId) newJob.fireId = fireId;
+          const newJob: JobData = {
+            id: Math.random().toString(36).substring(2, 11),
+            jobId,
+            customer: data.clientName || data.customer || '',
+            jobName: data.jobName || '',
+            address: data.address || '',
+            dateReceived: data.dateReceived || new Date().toISOString().split('T')[0],
+            deadline: data.deadline || '',
+            technology: normalizeTech(data.printType || data.technology || []) as ('DIGI' | 'OFSET' | 'KOOP')[],
+            status: data.status || JobStatus.INQUIRY,
+            position: { x: 100, y: 100 },
+            isNew: false,
+            isTracked: false,
+            fromQueue: true,
+            trackingStage: data.currentStage || data.trackingStage || 'studio',
+            zIndex: Date.now(),
+            items: data.items || [],
+            bindingType: data.bindingType || '',
+            laminationType: data.laminationType || '',
+            processing: data.processing || '',
+            cooperation: data.cooperation || '',
+            shippingNotes: data.shippingNotes || '',
+            generalNotes: data.generalNotes || '',
+            icon: data.icon || 'FileText',
+          };
 
-        setJobs(prev => {
-          if (prev.some(j => j.jobId === newJob.jobId)) return prev;
-          return [...prev, newJob];
-        });
-
-        console.log(`✅ Auto-importována zakázka v reálném čase: ${newJob.jobId}`);
+          // Zapíšeme do tabule — board listener zachytí 'added' a přidá do state
+          await saveToFirebase(newJob, true);
+          existingJobIds.add(jobId); // Zabránění duplicitám v rámci dávky
+          if (data.orderNumber) existingJobIds.add(data.orderNumber.trim()); // Také orderNumber
+          console.log(`✅ Auto-importována zakázka: ${newJob.jobId}`);
+        }
       }
+
+      // --- SYNC: Změna stavu výroby z fronty → Tabule ---
+      modifiedChanges.forEach(change => {
+        const data = change.doc.data() as any;
+        const incomingStage = data.currentStage;
+        const jobId = (data.jobId || data.orderNumber || '').trim();
+        if (!incomingStage || !jobId) return;
+
+        console.log('🔄 Orders modified:', { jobId, incomingStage, docId: change.doc.id });
+
+        const boardQuery = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', jobId));
+        getDocs(boardQuery).then(snap => {
+          if (snap.empty) {
+            console.warn('❌ Stage sync FAIL - karta nenalezena:', jobId);
+            return;
+          }
+          snap.docs.forEach(d => {
+            updateDoc(d.ref, { trackingStage: incomingStage, lastUpdated: serverTimestamp() });
+          });
+          console.log(`✅ Stage sync OK: ${jobId} → ${incomingStage}`);
+        }).catch(e => console.warn('❌ Stage sync FAIL:', e));
+      });
+
+      // --- SMAZÁNÍ z fronty → smaž i z tabule ---
+      // Nevyvoláváme setJobs přímo — smazání z BOARD_CARDS zachytí board listener
+      // POZOR: Kontrolujeme, zda zakázka SKUTEČNĚ zmizela z fronty (ne jen čištění duplicit)
+      removedChanges.forEach(change => {
+        const data = change.doc.data() as any;
+        const removedJobId = (data.jobId || data.orderNumber || '').trim();
+        if (!removedJobId) return;
+
+        // Zkontrolujeme OBOU polí (orderNumber i jobId), aby nechyběl žádný formát
+        const q1 = query(collection(db, PUBLIC_ORDERS_COLLECTION), where('orderNumber', '==', removedJobId));
+        const q2 = query(collection(db, PUBLIC_ORDERS_COLLECTION), where('jobId', '==', removedJobId));
+
+        Promise.all([getDocs(q1), getDocs(q2)]).then(([snap1, snap2]) => {
+          // Filtrujeme smazaný dokument samotný, aby se nepočítal jako "stále existující"
+          const remaining = [...snap1.docs, ...snap2.docs].filter(d => d.id !== change.doc.id);
+
+          if (remaining.length > 0) {
+            console.log('🧹 Odstraněn duplicát, zakázka stále existuje ve frontě:', removedJobId);
+            return;
+          }
+
+          console.log('🗑️ Zakázka kompletně smazána z fronty, mažu z tabule:', removedJobId);
+          const boardQuery = query(collection(db, BOARD_CARDS_COLLECTION), where('jobId', '==', removedJobId));
+          getDocs(boardQuery).then(snap => {
+            snap.docs.forEach(d => deleteDoc(d.ref));
+          });
+        }).catch(e => console.warn('❌ Delete sync FAIL:', e));
+      });
+    }, (error) => {
+      console.error('Firebase orders sync error:', error);
     });
 
     return () => unsubscribe();
@@ -915,9 +907,11 @@ const App: React.FC = () => {
   const handleDeleteJob = (id: string) => {
     if (confirm('Smazat zakázku? Smaže se i ze systému "Zakázka na cestě".')) {
       const jobToDelete = jobs.find(j => j.id === id);
+      // Optimisticky odstraníme ze state (board listener potvrdí smazání z Firebase)
       setJobs(prev => prev.filter(j => j.id !== id));
       if (jobToDelete) {
-        deleteFromFirebase(id, jobToDelete.jobId || jobToDelete.id, jobToDelete.fireId, jobToDelete.outlookId);
+        // Oprava: předáváme jobId (číslo zakázky), ne interní React id
+        deleteFromFirebase(jobToDelete.jobId, jobToDelete.jobId, jobToDelete.fireId, jobToDelete.outlookId);
       }
       setIsModalOpen(false);
       setSelectedJob(null);

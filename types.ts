@@ -31,7 +31,7 @@ export interface JobData {
   distance?: string;
   dateReceived: string;
   deadline: string;
-  technology: ('DIGI' | 'OFSET')[];
+  technology: ('DIGI' | 'OFSET' | 'KOOP')[];
   status: JobStatus;
   items: PrintItem[];
   bindingType: string;

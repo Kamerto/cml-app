@@ -762,7 +762,7 @@ Specifikace: ${item.techSpecs}`,
     setSelectedItemIds(new Set());
   };
 
-  const toggleTechnology = (tech: 'DIGI' | 'OFSET') => {
+  const toggleTechnology = (tech: 'DIGI' | 'OFSET' | 'KOOP') => {
     setFormData(prev => {
       const current = prev.technology || [];
       const updated = current.includes(tech) ? current.filter(t => t !== tech) : [...current, tech];
@@ -1027,9 +1027,8 @@ Text: "${itemAiText}"`,
     const jsonStr = JSON.stringify(pytlikData);
     const encodedData = btoa(unescape(encodeURIComponent(jsonStr)));
 
-    // Povýšíme zakázku do sledovacího systému (Tracked)
-    const updatedData = { ...formData, isTracked: true };
-    onSave(updatedData);
+    // Jen uložíme na tabuli, do fronty půjde až přes Pytlík
+    onSave(formData);
 
     const pytlikUrl = `https://el-pytlik.vercel.app/?jobData=${encodedData}`;
     window.open(pytlikUrl, '_blank');
@@ -1119,15 +1118,15 @@ Text: "${itemAiText}"`,
                 let customStyle: React.CSSProperties = {};
 
                 if (isActive && col.id === JobStatus.READY_FOR_PROD) {
-                  const hasOfset = formData.technology?.includes('OFSET');
-                  const hasDigi = formData.technology?.includes('DIGI');
+                  const techColors: string[] = [];
+                  if (formData.technology?.includes('OFSET')) techColors.push('#f97316');
+                  if (formData.technology?.includes('DIGI')) techColors.push('#0ea5e9');
+                  if (formData.technology?.includes('KOOP')) techColors.push('#6b7280');
 
-                  if (hasOfset && hasDigi) {
-                    customStyle = { background: 'linear-gradient(to right, #f97316, #0ea5e9)' };
-                  } else if (hasOfset) {
-                    customStyle = { backgroundColor: '#f97316' };
-                  } else if (hasDigi) {
-                    customStyle = { backgroundColor: '#0ea5e9' };
+                  if (techColors.length >= 2) {
+                    customStyle = { background: `linear-gradient(to right, ${techColors.join(', ')})` };
+                  } else if (techColors.length === 1) {
+                    customStyle = { backgroundColor: techColors[0] };
                   }
                 }
 
@@ -1272,8 +1271,8 @@ Text: "${itemAiText}"`,
                         <Cpu className={`w-4 h-4 ${getIconStyle(formData.technology)}`} /> Způsob výroby (Technologie)
                       </label>
                       <div className={`flex gap-2.5 max-w-sm p-1.5 rounded-2xl transition-all ${formData.technology.length === 0 ? 'bg-amber-500/10 border border-dashed border-amber-500/30 shadow-lg shadow-amber-950/20' : 'bg-slate-800 border border-slate-700'}`}>
-                        {['OFSET', 'DIGI'].map((tech: any) => (
-                          <button key={tech} onClick={() => toggleTechnology(tech)} className={`flex-1 px-5 py-3 rounded-xl font-black border-2 transition-all text-xs tracking-tighter ${formData.technology?.includes(tech) ? (tech === 'DIGI' ? 'bg-sky-500 border-sky-300 text-white shadow-lg' : 'bg-orange-600 border-orange-400 text-white shadow-lg') : 'bg-slate-800 border-slate-700 text-slate-600 hover:border-slate-600'}`}>
+                        {(['OFSET', 'DIGI', 'KOOP'] as const).map((tech) => (
+                          <button key={tech} onClick={() => toggleTechnology(tech)} className={`flex-1 px-5 py-3 rounded-xl font-black border-2 transition-all text-xs tracking-tighter ${formData.technology?.includes(tech) ? (tech === 'DIGI' ? 'bg-sky-500 border-sky-300 text-white shadow-lg' : tech === 'OFSET' ? 'bg-orange-600 border-orange-400 text-white shadow-lg' : 'bg-gray-500 border-gray-400 text-white shadow-lg') : 'bg-slate-800 border-slate-700 text-slate-600 hover:border-slate-600'}`}>
                             {tech}
                           </button>
                         ))}

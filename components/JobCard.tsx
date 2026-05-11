@@ -83,13 +83,19 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
     if (!isUrgent) {
       const hasOfset = job.technology?.some(t => t === 'OFSET' || t === 'O' || t.toLowerCase() === 'offset');
       const hasDigi = job.technology?.some(t => t === 'DIGI' || t === 'D' || t.toLowerCase() === 'digital');
+      const hasKoop = job.technology?.some(t => t === 'KOOP');
 
-      if (hasOfset && hasDigi) {
-        return { background: 'linear-gradient(to right, #f97316 50%, #0ea5e9 50%)' };
-      } else if (hasOfset) {
-        return { backgroundColor: '#f97316' };
-      } else if (hasDigi) {
-        return { backgroundColor: '#0ea5e9' };
+      const colors: string[] = [];
+      if (hasOfset) colors.push('#f97316');
+      if (hasDigi) colors.push('#0ea5e9');
+      if (hasKoop) colors.push('#6b7280');
+
+      if (colors.length === 3) {
+        return { background: `linear-gradient(to right, ${colors[0]} 33.33%, ${colors[1]} 33.33% 66.66%, ${colors[2]} 66.66%)` };
+      } else if (colors.length === 2) {
+        return { background: `linear-gradient(to right, ${colors[0]} 50%, ${colors[1]} 50%)` };
+      } else if (colors.length === 1) {
+        return { backgroundColor: colors[0] };
       }
     }
     return {};
@@ -105,7 +111,7 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
     if (isUrgent && !job.isFolder) return 'bg-rose-600 shadow-[0_0_20px_rgba(225,29,72,0.4)] ring-2 ring-rose-400/50';
     if (job.isFolder) return 'bg-amber-600/90';
     
-    const hasTech = job.technology?.some(t => ['OFSET', 'O', 'DIGI', 'D', 'offset', 'digital'].includes(t));
+    const hasTech = job.technology?.some(t => ['OFSET', 'O', 'DIGI', 'D', 'KOOP', 'offset', 'digital'].includes(t));
     if (hasTech) return '';
     
     return statusConfig?.color || 'bg-slate-700';
@@ -210,11 +216,15 @@ const JobCard: React.FC<JobCardProps> = ({ job, onClick, onDelete, onStatusChang
       <div className={`pt-2 border-t border-white/10 shrink-0 mt-1`}>
         <div
           className="flex justify-between bg-black/20 p-0.5 rounded-lg gap-0.5 overflow-hidden"
-          style={isUrgent && job.status === JobStatus.READY_FOR_PROD ? {
-            background: job.technology?.includes('OFSET') && job.technology?.includes('DIGI')
-              ? 'linear-gradient(to right, #f97316, #0ea5e9)'
-              : job.technology?.includes('OFSET') ? '#f97316' : '#0ea5e9'
-          } : {}}
+          style={isUrgent && job.status === JobStatus.READY_FOR_PROD ? (() => {
+            const c: string[] = [];
+            if (job.technology?.includes('OFSET')) c.push('#f97316');
+            if (job.technology?.includes('DIGI')) c.push('#0ea5e9');
+            if (job.technology?.includes('KOOP')) c.push('#6b7280');
+            if (c.length >= 2) return { background: `linear-gradient(to right, ${c.join(', ')})` };
+            if (c.length === 1) return { backgroundColor: c[0] };
+            return {};
+          })() : {}}
         >
           {COLUMNS.map(col => (
             <button
