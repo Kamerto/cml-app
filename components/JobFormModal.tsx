@@ -1244,28 +1244,6 @@ Text: "${itemAiText}"`,
                         );
                       })()}
                     </div>
-                    {productionCustomers.length > 0 && (() => {
-                      const q = (formData.customer || '').toLowerCase();
-                      const filtered = productionCustomers.filter(c => !q || c.toLowerCase().includes(q));
-                      if (filtered.length === 0) return null;
-                      return (
-                        <div className="mt-2">
-                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">Ve výrobě — klikněte pro doplnění</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {filtered.map((name, i) => (
-                              <button
-                                key={i}
-                                type="button"
-                                onClick={() => setFormData(fd => ({ ...fd, customer: name }))}
-                                className="px-3 py-1.5 rounded-xl bg-slate-800 text-white text-sm font-bold hover:bg-purple-600 transition-colors border border-slate-700"
-                              >
-                                {name}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-600 uppercase mb-3 flex items-center gap-2 tracking-widest">
