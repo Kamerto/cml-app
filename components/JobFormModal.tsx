@@ -1235,7 +1235,7 @@ Text: "${itemAiText}"`,
                                   setFormData(fd => ({ ...fd, customer: name }));
                                   setCustomerDropdownOpen(false);
                                 }}
-                                className="w-full text-left px-5 py-3 text-base font-bold hover:bg-purple-50 hover:text-purple-700 transition-colors border-b border-slate-50 last:border-0"
+                                className="w-full text-left px-5 py-3 text-base font-bold text-slate-900 hover:bg-purple-50 hover:text-purple-700 transition-colors border-b border-slate-100 last:border-0"
                               >
                                 {name}
                               </button>
