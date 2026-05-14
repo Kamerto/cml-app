@@ -79,6 +79,7 @@ interface JobFormModalProps {
   aiProvider?: 'gemini' | 'ollama';
   ollamaModel?: string;
   productionCustomers?: string[];
+  allCustomers?: string[];
 }
 
 const SUGGESTIONS = {
@@ -238,7 +239,7 @@ const SuggestionInput: React.FC<{
   );
 };
 
-const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete, aiProvider = 'gemini', ollamaModel = 'llama3.1', productionCustomers = [] }) => {
+const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete, aiProvider = 'gemini', ollamaModel = 'llama3.1', productionCustomers = [], allCustomers = [] }) => {
   const [formData, setFormData] = useState<JobData>(() => ({
     ...job,
     jobId: job.jobId || '',
@@ -1217,9 +1218,10 @@ Text: "${itemAiText}"`,
                           if (formData.customer?.trim()) addRecentCustomer(formData.customer.trim());
                         }}
                       />
-                      {customerDropdownOpen && recentCustomers.length > 0 && (() => {
+                      {customerDropdownOpen && (() => {
                         const q = (formData.customer || '').toLowerCase();
-                        const filtered = q ? recentCustomers.filter(c => c.toLowerCase().includes(q)) : recentCustomers;
+                        const merged = [...recentCustomers, ...allCustomers.filter(c => !recentCustomers.includes(c))].slice(0, 10);
+                        const filtered = q ? merged.filter(c => c.toLowerCase().includes(q)) : merged;
                         if (filtered.length === 0) return null;
                         return (
                           <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">

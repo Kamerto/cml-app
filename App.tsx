@@ -105,7 +105,7 @@ const App: React.FC = () => {
     const safeIdCheck = trimmedId.replace(/\//g, '_');
     // Povolíme: platné číslo zakázky (NNNNN_RR), dočasné ID (TEMP-/OUT-/SBX-)
     // Blokujeme: neúplná čísla (jen číslice bez roku, nebo s prázdným rokem)
-    const isValidJobNumber = /^\d+_\d{2,}$/.test(safeIdCheck);
+    const isValidJobNumber = /^\d+_\d{2,}$/.test(safeIdCheck) || /^\d+V\d+_\d{2,}$/i.test(safeIdCheck);
     const isTempId = /^(TEMP|OUT|SBX)-/i.test(trimmedId);
     if (!isValidJobNumber && !isTempId) {
       console.log('⚠️ Přeskočeno uložení — neplatný formát čísla zakázky:', job.jobId);
@@ -143,15 +143,23 @@ const App: React.FC = () => {
         const publicDocRef = doc(db, PUBLIC_ORDERS_COLLECTION, safeDocId);
 
         // --- MAPPING FOR QUEUE APP COMPATIBILITY ---
+        // Zakázka na cestě ukládá technologii jako 'digital'/'offset', CML interně jako 'DIGI'/'OFSET'
+        const toQueueTech = (arr: string[]) => arr.map(t => {
+          const u = t.toUpperCase();
+          if (u === 'DIGI' || u === 'DIGITAL') return 'digital';
+          if (u === 'OFSET' || u === 'OFFSET') return 'offset';
+          return t;
+        });
         const queueMapping = {
           orderNumber: job.jobId || (job as any).orderNumber || "",
           // clientName = kombinace pro zobrazení, customer = čisté jméno pro sync
           clientName: job.customer ? (job.customer + (job.jobName ? " / " + job.jobName : "")) : ((job as any).clientName || ""),
           customer: job.customer || "",
           currentStage: job.trackingStage || (job as any).currentStage || "studio",
-          printType: Array.isArray(job.technology) ? job.technology : ((job as any).printType || []),
+          printType: toQueueTech(Array.isArray(job.technology) ? job.technology : ((job as any).printType || [])),
           technology: Array.isArray(job.technology) ? job.technology : ((job as any).technology || []),
           deadline: job.deadline || "",
+          deliveryDate: job.deadline || "",
         };
 
         await setDoc(publicDocRef, {
@@ -180,7 +188,7 @@ const App: React.FC = () => {
   };
 
   // Smazání zakázky z Firebase
-  const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string, outlookId?: string) => {
+  const deleteFromFirebase = async (jobId: string, orderId: string, fireId?: string, outlookId?: string, skipEmailDeletion = false) => {
     try {
       const id = (orderId || jobId).trim();
       const safeId = id.replace(/\//g, '_');
@@ -199,29 +207,31 @@ const App: React.FC = () => {
       }
 
       console.log('Smazáno z obou kolekcí (Unified Safe ID):', safeId);
-      
+
       // Vždy také smažeme podle jobId z fronty (pro zakázky importované z fronty)
-      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION), 
+      const q = query(collection(db, PUBLIC_ORDERS_COLLECTION),
         where('jobId', '==', orderId || jobId));
       const snap = await getDocs(q);
       snap.forEach(d => deleteDoc(d.ref));
-      
+
       // Také zkusíme orderNumber (fronta může používat jiný klíč)
-      const q2 = query(collection(db, PUBLIC_ORDERS_COLLECTION), 
+      const q2 = query(collection(db, PUBLIC_ORDERS_COLLECTION),
         where('orderNumber', '==', orderId || jobId));
       const snap2 = await getDocs(q2);
       snap2.forEach(d => deleteDoc(d.ref));
 
       console.log('🗑️ Smazáno z fronty podle jobId:', orderId || jobId);
 
-      // Smazání emailů přiřazených k zakázce
-      const ids = [orderId, jobId, outlookId].filter(Boolean) as string[];
-      for (const id of ids) {
-        const eq = query(collection(db, EMAILS_COLLECTION), where('zakazka_id', '==', id));
-        const esnap = await getDocs(eq);
-        esnap.forEach(d => deleteDoc(d.ref));
+      // Smazání emailů — přeskočíme při přečíslování (maily se přelinkují, nesmazávají)
+      if (!skipEmailDeletion) {
+        const ids = [orderId, jobId, outlookId].filter(Boolean) as string[];
+        for (const id of ids) {
+          const eq = query(collection(db, EMAILS_COLLECTION), where('zakazka_id', '==', id));
+          const esnap = await getDocs(eq);
+          esnap.forEach(d => deleteDoc(d.ref));
+        }
+        console.log('🗑️ Smazány emaily pro zakázku:', ids.join(', '));
       }
-      console.log('🗑️ Smazány emaily pro zakázku:', ids.join(', '));
     } catch (e) {
       console.error('Chyba při mazání z Firebase:', e);
     }
@@ -332,7 +342,7 @@ const App: React.FC = () => {
       if (job.zIndex === newZIndex) return prev;
 
       const updatedJob = { ...job, zIndex: newZIndex };
-      saveToFirebase(updatedJob);
+      saveToFirebase(updatedJob, true);
       return prev.map(j => j.id === id ? updatedJob : j);
     });
   };
@@ -342,18 +352,29 @@ const App: React.FC = () => {
     if (!oldJobId || !newJobId || oldJobId === newJobId) return;
     try {
       const { getDocs: _getDocs, updateDoc: _updateDoc, query: _query, collection: _collection, where: _where } = await import('firebase/firestore');
-      
-      // Hledáme maily pro staré ID
-      const q = _query(_collection(db, EMAILS_COLLECTION), _where('zakazka_id', '==', oldJobId));
-      const snapshot = await _getDocs(q);
-      
-      // Propojíme je na nové ID (prioritně outlookId, pokud je k dispozici)
-      const targetId = outlookId || newJobId;
-      const updates = snapshot.docs.map(doc => _updateDoc(doc.ref, { zakazka_id: targetId }));
-      
+
+      // Hledáme maily podle starého jobId i podle outlookId (makro může použít buď jedno nebo druhé)
+      const searchIds = [oldJobId, outlookId].filter(Boolean) as string[];
+      const snapshots = await Promise.all(
+        searchIds.map(id => _getDocs(_query(_collection(db, EMAILS_COLLECTION), _where('zakazka_id', '==', id))))
+      );
+
+      // Deduplikujeme (jeden mail může mít zakazka_id = outlookId i oldJobId — nesmíme ho aktualizovat dvakrát)
+      const seen = new Set<string>();
+      const updates: Promise<void>[] = [];
+      snapshots.forEach(snapshot => {
+        snapshot.docs.forEach(d => {
+          if (!seen.has(d.id)) {
+            seen.add(d.id);
+            // Přelinkujeme na nové číslo zakázky (jobId), aby bylo propojení čitelné
+            updates.push(_updateDoc(d.ref, { zakazka_id: newJobId }));
+          }
+        });
+      });
+
       await Promise.all(updates);
       if (updates.length > 0) {
-        console.log(`✉️ Přepojena ${updates.length} e-mailů: ${oldJobId} → ${targetId}`);
+        console.log(`✉️ Přepojena ${updates.length} e-mailů: [${searchIds.join(', ')}] → ${newJobId}`);
       }
     } catch (e) {
       console.error('Chyba při přepojování e-mailů:', e, 'Col:', EMAILS_COLLECTION);
@@ -792,7 +813,7 @@ const App: React.FC = () => {
       if (newPositions.has(job.id)) {
         const newPos = newPositions.get(job.id)!;
         const updatedJob = { ...job, position: newPos };
-        saveToFirebase(updatedJob);
+        saveToFirebase(updatedJob, true);
         return updatedJob;
       }
       return job;
@@ -881,7 +902,7 @@ const App: React.FC = () => {
       if (jobId) {
         setJobs(prev => prev.map(job => job.id === jobId ? { ...job, position: { x, y }, isNew: false } : job));
         const movedJob = jobs.find(j => j.id === jobId);
-        if (movedJob) saveToFirebase({ ...movedJob, position: { x, y }, isNew: false });
+        if (movedJob) saveToFirebase({ ...movedJob, position: { x, y }, isNew: false }, true);
       } else if (noteId) {
         setNotes(prev => prev.map(note => note.id === noteId ? { ...note, position: { x, y } } : note));
         const movedNote = notes.find(n => n.id === noteId);
@@ -951,10 +972,11 @@ const App: React.FC = () => {
     // --- PŘEČÍSLOVÁNÍ (Smazání starého záznamu při změně jobId) ---
     if (previousJob && previousJob.jobId && previousJob.jobId !== data.jobId) {
       console.log(`🔄 Přečíslování: Mažu starý záznam ${previousJob.jobId} a vytvářím ${data.jobId}`);
-      deleteFromFirebase(previousJob.jobId, previousJob.jobId, previousJob.fireId, previousJob.outlookId);
-      
-      // Email mapping fix
-      updateEmailsJobId(previousJob.jobId, data.jobId, data.outlookId);
+      // skipEmailDeletion = true: maily nepřerušujeme, jen přelinkujeme níže
+      deleteFromFirebase(previousJob.jobId, previousJob.jobId, previousJob.fireId, previousJob.outlookId, true);
+
+      // Přelinkujeme maily na nové číslo zakázky (hledáme i podle outlookId)
+      updateEmailsJobId(previousJob.jobId, data.jobId, previousJob.outlookId || data.outlookId);
     }
 
     // 1. Lokální update (optimistický)
@@ -1304,6 +1326,14 @@ const App: React.FC = () => {
           onDelete={handleDeleteJob}
           aiProvider={aiProvider}
           ollamaModel={ollamaModel}
+          productionCustomers={jobs
+            .filter(j => j.status === JobStatus.READY_FOR_PROD && j.customer)
+            .map(j => j.customer)
+            .filter((v, i, a) => a.indexOf(v) === i)}
+          allCustomers={jobs
+            .filter(j => j.customer)
+            .map(j => j.customer as string)
+            .filter((v, i, a) => a.indexOf(v) === i)}
         />
       )}
     </div>
