@@ -6,7 +6,7 @@ import {
   Layers, Maximize, Minimize, LogOut, ClipboardList, ClipboardCheck, ClipboardPaste,
   StickyNote, Calendar
 } from 'lucide-react';
-import { JobData, JobStatus, PrintItem, BoardNoteData } from './types';
+import { JobData, JobStatus, PrintItem, BoardNoteData, BoardNoteItem } from './types';
 
 import JobCard from './components/JobCard';
 import JobFormModal from './components/JobFormModal';
@@ -400,14 +400,22 @@ const App: React.FC = () => {
           const data = change.doc.data() as BoardNoteData;
           const index = newNotes.findIndex(n => n.id === change.doc.id);
 
+          // Migrace: starý formát měl text: string, nový má items: []
+          const migrateNote = (d: BoardNoteData): BoardNoteData => {
+            if (!d.items && d.text) {
+              return { ...d, items: [{ id: 'migrated', text: d.text, done: false }] };
+            }
+            return { ...d, items: d.items || [] };
+          };
+
           if (change.type === 'added') {
             if (index === -1) {
-              newNotes.push({ ...data, id: change.doc.id });
+              newNotes.push(migrateNote({ ...data, id: change.doc.id }));
             }
           }
           if (change.type === 'modified') {
             if (index !== -1) {
-              newNotes[index] = { ...data, id: change.doc.id };
+              newNotes[index] = migrateNote({ ...data, id: change.doc.id });
             }
           }
           if (change.type === 'removed') {
@@ -915,19 +923,19 @@ const App: React.FC = () => {
     const pos = getNewJobPosition();
     const newNote: BoardNoteData = {
       id: `note-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      text: '',
+      items: [],
       position: pos,
       zIndex: Date.now(),
-      color: '#ff69b4' // reflexní růžová
+      color: '#ff69b4'
     };
     setNotes(prev => [...prev, newNote]);
     saveNoteToFirebase(newNote);
   };
 
-  const handleUpdateNote = (id: string, text: string) => {
-    setNotes(prev => prev.map(n => n.id === id ? { ...n, text } : n));
+  const handleUpdateNote = (id: string, items: BoardNoteItem[]) => {
+    setNotes(prev => prev.map(n => n.id === id ? { ...n, items } : n));
     const note = notes.find(n => n.id === id);
-    if (note) saveNoteToFirebase({ ...note, text });
+    if (note) saveNoteToFirebase({ ...note, items });
   };
 
   const handleDeleteNote = (id: string) => {

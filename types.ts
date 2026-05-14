@@ -53,6 +53,7 @@ export interface JobData {
   zIndex?: number;
   fromQueue?: boolean;
   pickedUp?: boolean;
+  isNew?: boolean;
 }
 
 export interface Column {
@@ -63,9 +64,16 @@ export interface Column {
   accentColor: string;
 }
 
-export interface BoardNoteData {
+export interface BoardNoteItem {
   id: string;
   text: string;
+  done: boolean;
+}
+
+export interface BoardNoteData {
+  id: string;
+  items: BoardNoteItem[];
+  text?: string; // legacy – migrace ze starého formátu
   position: { x: number; y: number };
   zIndex?: number;
   color?: string;
