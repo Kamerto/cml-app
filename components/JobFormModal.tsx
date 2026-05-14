@@ -78,6 +78,7 @@ interface JobFormModalProps {
   onDelete: (id: string) => void;
   aiProvider?: 'gemini' | 'ollama';
   ollamaModel?: string;
+  productionCustomers?: string[];
 }
 
 const SUGGESTIONS = {
@@ -237,7 +238,7 @@ const SuggestionInput: React.FC<{
   );
 };
 
-const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete, aiProvider = 'gemini', ollamaModel = 'llama3.1' }) => {
+const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDelete, aiProvider = 'gemini', ollamaModel = 'llama3.1', productionCustomers = [] }) => {
   const [formData, setFormData] = useState<JobData>(() => ({
     ...job,
     jobId: job.jobId || '',
@@ -303,6 +304,24 @@ const JobFormModal: React.FC<JobFormModalProps> = ({ job, onClose, onSave, onDel
   const [summaryText, setSummaryText] = useState('');
   const [isSaving, setIsSaving] = useState(false);
   const isFirstRender = useRef(true);
+
+  const RECENT_CUSTOMERS_KEY = 'cml_recent_customers';
+  const [recentCustomers, setRecentCustomers] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem('cml_recent_customers');
+      return stored ? JSON.parse(stored) : [];
+    } catch { return []; }
+  });
+  const [customerDropdownOpen, setCustomerDropdownOpen] = useState(false);
+
+  const addRecentCustomer = (name: string) => {
+    if (!name.trim()) return;
+    setRecentCustomers(prev => {
+      const updated = [name.trim(), ...prev.filter(c => c !== name.trim())].slice(0, 10);
+      localStorage.setItem(RECENT_CUSTOMERS_KEY, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   // --- AUTOSAVE ---
   useEffect(() => {
@@ -1185,13 +1204,66 @@ Text: "${itemAiText}"`,
                     <label className="block text-xs font-black text-slate-600 uppercase mb-3 flex items-center gap-2 tracking-widest">
                       <Building className={`w-4 h-4 transition-all duration-300 ${getIconStyle(formData.customer)}`} /> Zákazník / Firma
                     </label>
-                    <input
-                      type="text"
-                      className={`w-full border rounded-2xl px-7 py-5 text-2xl font-black focus:ring-4 focus:ring-purple-500/20 outline-none transition-all ${getFieldStyle(formData.customer)}`}
-                      value={formData.customer || ''}
-                      onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
-                      placeholder="KDO TO OBJEDNÁVÁ?..."
-                    />
+                    <div className="relative">
+                      <input
+                        type="text"
+                        className={`w-full border rounded-2xl px-7 py-5 text-2xl font-black focus:ring-4 focus:ring-purple-500/20 outline-none transition-all ${getFieldStyle(formData.customer)}`}
+                        value={formData.customer || ''}
+                        onChange={(e) => setFormData({ ...formData, customer: e.target.value })}
+                        placeholder="KDO TO OBJEDNÁVÁ?..."
+                        onFocus={() => setCustomerDropdownOpen(true)}
+                        onBlur={() => {
+                          setTimeout(() => setCustomerDropdownOpen(false), 150);
+                          if (formData.customer?.trim()) addRecentCustomer(formData.customer.trim());
+                        }}
+                      />
+                      {customerDropdownOpen && recentCustomers.length > 0 && (() => {
+                        const q = (formData.customer || '').toLowerCase();
+                        const filtered = q ? recentCustomers.filter(c => c.toLowerCase().includes(q)) : recentCustomers;
+                        if (filtered.length === 0) return null;
+                        return (
+                          <div className="absolute z-50 w-full mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl overflow-hidden">
+                            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-4 py-2 border-b border-slate-100">Poslední zákazníci</p>
+                            {filtered.map((name, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                  setFormData(fd => ({ ...fd, customer: name }));
+                                  setCustomerDropdownOpen(false);
+                                }}
+                                className="w-full text-left px-5 py-3 text-base font-bold hover:bg-purple-50 hover:text-purple-700 transition-colors border-b border-slate-50 last:border-0"
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                    {productionCustomers.length > 0 && (() => {
+                      const q = (formData.customer || '').toLowerCase();
+                      const filtered = productionCustomers.filter(c => !q || c.toLowerCase().includes(q));
+                      if (filtered.length === 0) return null;
+                      return (
+                        <div className="mt-2">
+                          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 px-1">Ve výrobě — klikněte pro doplnění</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {filtered.map((name, i) => (
+                              <button
+                                key={i}
+                                type="button"
+                                onClick={() => setFormData(fd => ({ ...fd, customer: name }))}
+                                className="px-3 py-1.5 rounded-xl bg-slate-800 text-white text-sm font-bold hover:bg-purple-600 transition-colors border border-slate-700"
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label className="block text-xs font-black text-slate-600 uppercase mb-3 flex items-center gap-2 tracking-widest">
